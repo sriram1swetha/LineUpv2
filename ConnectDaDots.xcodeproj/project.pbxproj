@@ -6,8 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		18A9E3EB2F8364E900D70FFF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 18A9E3EA2F8364E900D70FFF /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
-		18A9E3AE2F83582F00D70FFF /* LineUp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LineUp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		18A9E3AE2F83582F00D70FFF /* ConnectDaDots.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ConnectDaDots.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		18A9E3EA2F8364E900D70FFF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -32,6 +37,7 @@
 		18A9E3A52F83582F00D70FFF = {
 			isa = PBXGroup;
 			children = (
+				18A9E3EA2F8364E900D70FFF /* Assets.xcassets */,
 				18A9E3B02F83582F00D70FFF /* LineUp */,
 				18A9E3AF2F83582F00D70FFF /* Products */,
 			);
@@ -40,7 +46,7 @@
 		18A9E3AF2F83582F00D70FFF /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				18A9E3AE2F83582F00D70FFF /* LineUp.app */,
+				18A9E3AE2F83582F00D70FFF /* ConnectDaDots.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,9 +54,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		18A9E3AD2F83582F00D70FFF /* LineUp */ = {
+		18A9E3AD2F83582F00D70FFF /* ConnectDaDots */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 18A9E3C52F83583200D70FFF /* Build configuration list for PBXNativeTarget "LineUp" */;
+			buildConfigurationList = 18A9E3C52F83583200D70FFF /* Build configuration list for PBXNativeTarget "ConnectDaDots" */;
 			buildPhases = (
 				18A9E3AA2F83582F00D70FFF /* Sources */,
 				18A9E3AB2F83582F00D70FFF /* Frameworks */,
@@ -63,11 +69,11 @@
 			fileSystemSynchronizedGroups = (
 				18A9E3B02F83582F00D70FFF /* LineUp */,
 			);
-			name = LineUp;
+			name = ConnectDaDots;
 			packageProductDependencies = (
 			);
 			productName = LineUp;
-			productReference = 18A9E3AE2F83582F00D70FFF /* LineUp.app */;
+			productReference = 18A9E3AE2F83582F00D70FFF /* ConnectDaDots.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -85,7 +91,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 18A9E3A92F83582F00D70FFF /* Build configuration list for PBXProject "LineUp" */;
+			buildConfigurationList = 18A9E3A92F83582F00D70FFF /* Build configuration list for PBXProject "ConnectDaDots" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -99,7 +105,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				18A9E3AD2F83582F00D70FFF /* LineUp */,
+				18A9E3AD2F83582F00D70FFF /* ConnectDaDots */,
 			);
 		};
 /* End PBXProject section */
@@ -109,6 +115,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				18A9E3EB2F8364E900D70FFF /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -251,13 +258,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Y654SVALPA;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.puzzle-games";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
-				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -266,15 +274,19 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ssistla.LineUp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ssistla.ConnectDaDots;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -283,13 +295,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Y654SVALPA;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.puzzle-games";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
-				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -298,22 +311,26 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ssistla.LineUp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ssistla.ConnectDaDots;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		18A9E3A92F83582F00D70FFF /* Build configuration list for PBXProject "LineUp" */ = {
+		18A9E3A92F83582F00D70FFF /* Build configuration list for PBXProject "ConnectDaDots" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				18A9E3C32F83583200D70FFF /* Debug */,
@@ -322,7 +339,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		18A9E3C52F83583200D70FFF /* Build configuration list for PBXNativeTarget "LineUp" */ = {
+		18A9E3C52F83583200D70FFF /* Build configuration list for PBXNativeTarget "ConnectDaDots" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				18A9E3C62F83583200D70FFF /* Debug */,
