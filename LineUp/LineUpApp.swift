@@ -10,6 +10,9 @@ struct LineUpApp: App {
             ContentView()
                 .environmentObject(settings)
                 .environmentObject(scoreStore)
+                .onAppear {
+                    AudioManager.shared.startBackgroundMusic()
+                }
         }
     }
 }
