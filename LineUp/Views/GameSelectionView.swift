@@ -56,9 +56,7 @@ struct GameCard: View {
 
     private var dotCount: Int  { settings.dotCount(forGame: game) }
     private var shapeName: String {
-        levelType.isCurve
-            ? (dotCount == 2 ? "Arc" : "Circle·\(dotCount)")
-            : LevelGenerator.shapeName(dotCount: dotCount)
+        LevelGenerator.previewName(levelType: levelType, dotCount: dotCount, game: game)
     }
     private var best: Int?     { scoreStore.bestScore(level: level, game: game) }
     private var maxScore: Int  { (dotCount == 2 ? 1 : dotCount) * 100 }

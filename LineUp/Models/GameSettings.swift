@@ -102,9 +102,9 @@ class GameSettings: ObservableObject {
     }
 
     private init() {
-        gamesPerLevel    = defaults.object(forKey: K.gamesPerLevel)    as? Int    ?? 6
+        gamesPerLevel    = defaults.object(forKey: K.gamesPerLevel)    as? Int    ?? 10
         minGamesPerLevel = defaults.object(forKey: K.minGamesPerLevel) as? Int    ?? 2
-        maxGamesPerLevel = defaults.object(forKey: K.maxGamesPerLevel) as? Int    ?? 8
+        maxGamesPerLevel = defaults.object(forKey: K.maxGamesPerLevel) as? Int    ?? 12
         dotDiameter      = defaults.object(forKey: K.dotDiameter)      as? Double ?? 32.0
         thickStroke      = defaults.object(forKey: K.thickStroke)      as? Double ?? 8.0
         thinStroke       = defaults.object(forKey: K.thinStroke)       as? Double ?? 3.0

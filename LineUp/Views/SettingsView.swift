@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var settings: GameSettings
+    @ObservedObject private var audio = AudioManager.shared
     @State private var showResetConfirm = false
 
     var body: some View {
@@ -130,6 +131,73 @@ struct SettingsView: View {
                 Label("Stroke Thickness", systemImage: "scribble")
             } footer: {
                 Text("Thin stroke never exceeds dot diameter.")
+            }
+
+            // ── Music ─────────────────────────────────────────────────────
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: audio.isPlaying ? "music.note" : "music.note.list")
+                        .foregroundStyle(Color(hex: "e94560"))
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Now Playing").font(.caption).foregroundStyle(.secondary)
+                        Text(audio.currentTrackName.isEmpty ? "—" : audio.currentTrackName)
+                            .font(.subheadline.bold())
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Text(audio.isPlaying ? "Playing" : "Paused")
+                        .font(.caption2)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(
+                            (audio.isPlaying ? Color.green : Color.gray).opacity(0.15),
+                            in: Capsule()
+                        )
+                        .foregroundStyle(audio.isPlaying ? .green : .secondary)
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        audio.previous()
+                    } label: {
+                        Label("Previous", systemImage: "backward.fill")
+                            .labelStyle(.iconOnly)
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        if audio.isPlaying { audio.pause() } else { audio.play() }
+                    } label: {
+                        Label(audio.isPlaying ? "Pause" : "Play",
+                              systemImage: audio.isPlaying ? "pause.fill" : "play.fill")
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(hex: "e94560"))
+
+                    Button {
+                        audio.stop()
+                    } label: {
+                        Label("Stop", systemImage: "stop.fill")
+                            .labelStyle(.iconOnly)
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        audio.next()
+                    } label: {
+                        Label("Next", systemImage: "forward.fill")
+                            .labelStyle(.iconOnly)
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    }
+                    .buttonStyle(.bordered)
+                }
+            } header: {
+                Label("Music", systemImage: "speaker.wave.2.fill")
+            } footer: {
+                Text("Background tracks loop one after the other. Use ◀︎ ▶︎ to skip between tracks.")
             }
 
             // ── Data ──────────────────────────────────────────────────────

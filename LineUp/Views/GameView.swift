@@ -11,6 +11,7 @@ struct GameView: View {
 
     @EnvironmentObject var settings: GameSettings
     @EnvironmentObject var scoreStore: ScoreStore
+    @EnvironmentObject var navigator: Navigator
 
     @State private var currentLevel: Int
     @State private var currentGame: Int
@@ -26,14 +27,13 @@ struct GameView: View {
 
     @State private var flashScore: Int? = nil
     @State private var canvasSize: CGSize = CGSize(width: 350, height: 500)
-    @State private var showResult = false
     @State private var resultSaved = false
     @State private var pulseOn = false
 
     // Ideal line / arc highlight
     @State private var showIdeal = false
     @State private var idealOpacity: Double = 0
-    @State private var lastScoredConn: (Int, Int)? = nil
+    @State private var lastScoredConnIndex: Int? = nil
 
     init(level: Int, game: Int, levelType: LevelType) {
         self.initialLevel = level; self.initialGame = game; self.initialLevelType = levelType
@@ -48,6 +48,7 @@ struct GameView: View {
         LevelGenerator.configuration(
             levelType: currentLevelType,
             dotCount: settings.dotCount(forGame: currentGame),
+            game: currentGame,
             in: canvasSize, dotRadius: settings.dotRadius,
             topReserved: topArrowReserved)
     }
@@ -86,22 +87,6 @@ struct GameView: View {
                 Button("Restart") { restartGame() }
                     .disabled(phase == .idle && lineScores.isEmpty && redoStack.isEmpty)
             }
-            ToolbarItem(placement: .navigationBarLeading) {
-                HStack(spacing: 2) {
-                    Button { performUndo() } label: { Image(systemName: "arrow.uturn.backward") }
-                        .disabled(!canUndo)
-                    Button { performRedo() } label: { Image(systemName: "arrow.uturn.forward") }
-                        .disabled(!canRedo)
-                }
-            }
-        }
-        .sheet(isPresented: $showResult) {
-            GameResultView(
-                level: currentLevel, game: currentGame, levelType: currentLevelType,
-                shapeName: config.shapeName, lineScores: lineScores,
-                totalScore: totalScore, maxScore: maxScore,
-                undosUsed: totalUndosUsed,
-                onPlayAgain: { showResult = false; restartGame() })
         }
         .onAppear {
             withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
@@ -148,8 +133,11 @@ struct GameView: View {
                     guideShape(conn: conn)
                 }
 
-                // Circle outline hint for curve levels (very faint)
-                if currentLevelType.isCurve, let center = config.circleCenter,
+                // Faint circle outline hint for classic full-circle curve games.
+                // (Skipped for partial-arc games, which use per-connection arcs.)
+                if currentLevelType.isCurve,
+                   config.perConnectionArcs == nil,
+                   let center = config.circleCenter,
                    let radius = config.circleRadius {
                     Circle()
                         .stroke(Color.blue.opacity(0.06), lineWidth: 1)
@@ -158,8 +146,9 @@ struct GameView: View {
                 }
 
                 // Ideal highlight (appears after each scored stroke)
-                if showIdeal, let conn = lastScoredConn {
-                    idealHighlight(conn: conn).opacity(idealOpacity)
+                if showIdeal, let idx = lastScoredConnIndex,
+                   idx < config.connections.count {
+                    idealHighlight(connectionIndex: idx).opacity(idealOpacity)
                 }
 
                 // Finished strokes
@@ -197,9 +186,9 @@ struct GameView: View {
     private func guideShape(conn: (Int, Int)) -> some View {
         let a = config.dots[conn.0], b = config.dots[conn.1]
         if currentLevelType.isCurve,
-           let center = config.circleCenter, let radius = config.circleRadius {
+           let arc = config.arcInfo(for: connectionIndex) {
             // Dashed arc guide
-            ArcPath(center: center, radius: radius, from: a, to: b)
+            ArcPath(center: arc.center, radius: arc.radius, from: a, to: b)
                 .stroke(Color.blue.opacity(0.18),
                         style: StrokeStyle(lineWidth: 1.5, dash: [8, 6]))
         } else {
@@ -213,11 +202,12 @@ struct GameView: View {
     // ── Ideal highlight — solid green line or arc ──────────────────────────
 
     @ViewBuilder
-    private func idealHighlight(conn: (Int, Int)) -> some View {
+    private func idealHighlight(connectionIndex idx: Int) -> some View {
+        let conn = config.connections[idx]
         let a = config.dots[conn.0], b = config.dots[conn.1]
         if currentLevelType.isCurve,
-           let center = config.circleCenter, let radius = config.circleRadius {
-            ArcPath(center: center, radius: radius, from: a, to: b)
+           let arc = config.arcInfo(for: idx) {
+            ArcPath(center: arc.center, radius: arc.radius, from: a, to: b)
                 .stroke(Color.green,
                         style: StrokeStyle(lineWidth: lineW + 2, lineCap: .round))
                 .shadow(color: .green.opacity(0.55), radius: 6)
@@ -301,28 +291,52 @@ struct GameView: View {
     private var footerBar: some View {
         Group {
             if phase == .complete {
-                Button { showResult = true } label: {
-                    Label("View Results", systemImage: "chart.bar.fill")
+                Button { navigator.goHome() } label: {
+                    Label("Go Home", systemImage: "house.fill")
                         .frame(maxWidth: .infinity).padding().background(Color.blue)
                         .foregroundStyle(.white).clipShape(RoundedRectangle(cornerRadius: 14))
                         .padding(.horizontal)
                 }
             } else {
-                VStack(spacing: 4) {
+                VStack(spacing: 8) {
                     Text(footerHint).font(.caption).foregroundStyle(.secondary)
-                    HStack(spacing: 16) {
-                        if canUndo { Label("Undo", systemImage: "arrow.uturn.backward").font(.caption2).foregroundStyle(.blue) }
-                        if canRedo { Label("Redo", systemImage: "arrow.uturn.forward").font(.caption2).foregroundStyle(.blue) }
+
+                    // Undo / Redo — moved here from the top toolbar.
+                    HStack(spacing: 28) {
+                        Button { performUndo() } label: {
+                            VStack(spacing: 2) {
+                                Image(systemName: "arrow.uturn.backward")
+                                    .font(.system(size: 22, weight: .semibold))
+                                Text("Undo").font(.system(size: 10, weight: .medium))
+                            }
+                            .foregroundStyle(canUndo ? Color.blue : Color(.tertiaryLabel))
+                            .frame(minWidth: 56)
+                        }
+                        .disabled(!canUndo)
+
                         if totalUndosUsed > 0 {
                             Text("\(totalUndosUsed) undo\(totalUndosUsed == 1 ? "" : "s") used")
                                 .font(.caption2).foregroundStyle(Color(.tertiaryLabel))
                         }
+
+                        Button { performRedo() } label: {
+                            VStack(spacing: 2) {
+                                Image(systemName: "arrow.uturn.forward")
+                                    .font(.system(size: 22, weight: .semibold))
+                                Text("Redo").font(.system(size: 10, weight: .medium))
+                            }
+                            .foregroundStyle(canRedo ? Color.blue : Color(.tertiaryLabel))
+                            .frame(minWidth: 56)
+                        }
+                        .disabled(!canRedo)
                     }
                 }
-                .multilineTextAlignment(.center).padding(.horizontal)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+                .padding(.vertical, 6)
             }
         }
-        .frame(minHeight: 64).frame(maxWidth: .infinity)
+        .frame(minHeight: 72).frame(maxWidth: .infinity)
         .background(Color(.secondarySystemBackground))
     }
 
@@ -360,13 +374,15 @@ struct GameView: View {
                 activePath.append(value.location)
                 let startDot = config.dots[conn.0], endDot = config.dots[conn.1]
 
-                // Score: arc or line
+                // Score: arc or line. For curve levels, use the arc info
+                // specific to this connection (some partial-arc templates
+                // have a different center/radius per connection).
                 let scoreValue: Int
                 if currentLevelType.isCurve,
-                   let center = config.circleCenter, let radius = config.circleRadius {
+                   let arc = config.arcInfo(for: connectionIndex) {
                     scoreValue = ScoringEngine.scoreArc(
                         path: activePath, from: startDot, to: endDot,
-                        circleCenter: center, circleRadius: radius, dotRadius: dotR)
+                        circleCenter: arc.center, circleRadius: arc.radius, dotRadius: dotR)
                 } else {
                     scoreValue = ScoringEngine.score(
                         path: activePath, from: startDot, to: endDot, dotRadius: dotR)
@@ -375,7 +391,7 @@ struct GameView: View {
                 lineScores.append(scoreValue)
                 finishedStrokes.append(FinishedStroke(path: activePath, score: scoreValue))
                 activePath = []; phase = .reviewing
-                lastScoredConn = conn
+                lastScoredConnIndex = connectionIndex
 
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { flashScore = scoreValue }
 
@@ -474,7 +490,7 @@ struct GameView: View {
         phase = .idle; connectionIndex = 0; activePath = []
         finishedStrokes = []; lineScores = []; flashScore = nil
         resultSaved = false; redoStack = []; totalUndosUsed = 0
-        showIdeal = false; idealOpacity = 0; lastScoredConn = nil
+        showIdeal = false; idealOpacity = 0; lastScoredConnIndex = nil
     }
 
     private func saveResult() {
