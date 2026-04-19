@@ -54,7 +54,7 @@ struct SettingsView: View {
                 }
 
                 Stepper(value: $settings.maxGamesPerLevel,
-                        in: (settings.minGamesPerLevel + 1)...10) {
+                        in: (settings.minGamesPerLevel + 1)...12) {
                     HStack {
                         Text("Max games (admin)")
                         Spacer()
@@ -131,6 +131,25 @@ struct SettingsView: View {
                 Label("Stroke Thickness", systemImage: "scribble")
             } footer: {
                 Text("Thin stroke never exceeds dot diameter.")
+            }
+
+            // ── Drawing mode ────────────────────────────────────────────
+            Section {
+                Toggle(isOn: $settings.continuousDrawing) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Continuous Drawing")
+                        Text(settings.continuousDrawing
+                             ? "Draw through dots without lifting your finger"
+                             : "Lift and re-tap for each connection")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Label("Drawing Mode", systemImage: "hand.draw")
+            } footer: {
+                Text(settings.continuousDrawing
+                     ? "Scores update instantly as you pass through each dot. Lifting before reaching the next dot discards that stroke."
+                     : "Each connection is scored when you lift your finger. You see the ideal path overlay between strokes.")
             }
 
             // ── Music ─────────────────────────────────────────────────────

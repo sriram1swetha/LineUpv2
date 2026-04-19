@@ -60,8 +60,8 @@ struct GameView: View {
         guard connectionIndex < config.connections.count else { return nil }
         return config.connections[connectionIndex]
     }
-    private var canUndo: Bool { !lineScores.isEmpty && phase == .idle }
-    private var canRedo: Bool { !redoStack.isEmpty && phase == .idle }
+    private var canUndo: Bool { !lineScores.isEmpty && (phase == .idle || phase == .complete) }
+    private var canRedo: Bool { !redoStack.isEmpty && (phase == .idle || phase == .complete) }
     private var currentGameHasHistory: Bool { scoreStore.bestScore(level: currentLevel, game: currentGame) != nil }
     private var hasPrev: Bool { currentGame > 1 || currentLevel > 1 }
     private var hasNext: Bool {
@@ -128,8 +128,12 @@ struct GameView: View {
             ZStack(alignment: .top) {
                 Color(.systemBackground)
 
-                // Guide (straight or arc) — only for levels that have guides
-                if let conn = currentConn, phase != .complete, currentLevelType.hasGuide {
+                // Guide (straight or arc). Curves ALWAYS show the dashed
+                // guide — tracing a partial arc freehand without any visual
+                // reference is essentially guesswork. Straight-line levels
+                // follow the per-level `hasGuide` flag.
+                if let conn = currentConn, phase != .complete,
+                   (currentLevelType.hasGuide || currentLevelType.isCurve) {
                     guideShape(conn: conn)
                 }
 
@@ -224,28 +228,69 @@ struct GameView: View {
     @ViewBuilder
     private var topArrows: some View {
         VStack {
-            HStack(alignment: .top) {
-                Button { navigatePrev() } label: {
-                    Image(systemName: "chevron.left.circle.fill").font(.system(size: 36))
-                        .foregroundStyle(hasPrev && phase != .drawing && phase != .reviewing
-                            ? Color.blue.opacity(0.85) : Color(.systemFill))
+            HStack(alignment: .top, spacing: 0) {
+
+                // ◀ Previous game
+                VStack(spacing: 2) {
+                    Button { navigatePrev() } label: {
+                        Image(systemName: "chevron.left.circle.fill")
+                            .font(.system(size: 34))
+                            .foregroundStyle(hasPrev && phase != .drawing && phase != .reviewing
+                                ? Color.blue.opacity(0.85) : Color(.systemFill))
+                    }
+                    .disabled(!hasPrev || phase == .drawing || phase == .reviewing)
+                    Text("Prev").font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Color(.tertiaryLabel))
                 }
-                .disabled(!hasPrev || phase == .drawing || phase == .reviewing)
-                .padding(.leading, 10).padding(.top, 10)
+                .padding(.leading, 10).padding(.top, 8)
+
                 Spacer()
-                Button { navigateNext() } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: "chevron.right.circle.fill").font(.system(size: 36))
+
+                // ↶ Undo — between the two chevrons, always accessible,
+                // including after completion (so the last stroke can be undone).
+                VStack(spacing: 2) {
+                    Button { performUndo() } label: {
+                        Image(systemName: "arrow.uturn.backward.circle.fill")
+                            .font(.system(size: 34))
+                            .foregroundStyle(canUndo ? Color.blue.opacity(0.85) : Color(.systemFill))
+                    }
+                    .disabled(!canUndo)
+                    Text("Undo").font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(canUndo ? Color.blue.opacity(0.75) : Color(.tertiaryLabel))
+                }
+                .padding(.top, 8)
+
+                Spacer().frame(width: 8)
+
+                // ↷ Redo
+                VStack(spacing: 2) {
+                    Button { performRedo() } label: {
+                        Image(systemName: "arrow.uturn.forward.circle.fill")
+                            .font(.system(size: 34))
+                            .foregroundStyle(canRedo ? Color.blue.opacity(0.85) : Color(.systemFill))
+                    }
+                    .disabled(!canRedo)
+                    Text("Redo").font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(canRedo ? Color.blue.opacity(0.75) : Color(.tertiaryLabel))
+                }
+                .padding(.top, 8)
+
+                Spacer()
+
+                // ▶ Next game
+                VStack(spacing: 2) {
+                    Button { navigateNext() } label: {
+                        Image(systemName: "chevron.right.circle.fill")
+                            .font(.system(size: 34))
                             .foregroundStyle(hasNext && phase != .drawing && phase != .reviewing
                                 ? Color.blue.opacity(0.85) : Color(.systemFill))
-                        if !currentGameHasHistory {
-                            Text("Play first").font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(Color(.tertiaryLabel))
-                        }
                     }
+                    .disabled(!hasNext || phase == .drawing || phase == .reviewing)
+                    Text(currentGameHasHistory ? "Next" : "Play first")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Color(.tertiaryLabel))
                 }
-                .disabled(!hasNext || phase == .drawing || phase == .reviewing)
-                .padding(.trailing, 10).padding(.top, 10)
+                .padding(.trailing, 10).padding(.top, 8)
             }
             Spacer()
         }
@@ -298,45 +343,22 @@ struct GameView: View {
                         .padding(.horizontal)
                 }
             } else {
-                VStack(spacing: 8) {
-                    Text(footerHint).font(.caption).foregroundStyle(.secondary)
-
-                    // Undo / Redo — moved here from the top toolbar.
-                    HStack(spacing: 28) {
-                        Button { performUndo() } label: {
-                            VStack(spacing: 2) {
-                                Image(systemName: "arrow.uturn.backward")
-                                    .font(.system(size: 22, weight: .semibold))
-                                Text("Undo").font(.system(size: 10, weight: .medium))
-                            }
-                            .foregroundStyle(canUndo ? Color.blue : Color(.tertiaryLabel))
-                            .frame(minWidth: 56)
-                        }
-                        .disabled(!canUndo)
-
-                        if totalUndosUsed > 0 {
-                            Text("\(totalUndosUsed) undo\(totalUndosUsed == 1 ? "" : "s") used")
-                                .font(.caption2).foregroundStyle(Color(.tertiaryLabel))
-                        }
-
-                        Button { performRedo() } label: {
-                            VStack(spacing: 2) {
-                                Image(systemName: "arrow.uturn.forward")
-                                    .font(.system(size: 22, weight: .semibold))
-                                Text("Redo").font(.system(size: 10, weight: .medium))
-                            }
-                            .foregroundStyle(canRedo ? Color.blue : Color(.tertiaryLabel))
-                            .frame(minWidth: 56)
-                        }
-                        .disabled(!canRedo)
+                VStack(spacing: 4) {
+                    Text(footerHint)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    if totalUndosUsed > 0 {
+                        Text("\(totalUndosUsed) undo\(totalUndosUsed == 1 ? "" : "s") used")
+                            .font(.caption2)
+                            .foregroundStyle(Color(.tertiaryLabel))
                     }
                 }
-                .multilineTextAlignment(.center)
                 .padding(.horizontal)
                 .padding(.vertical, 6)
             }
         }
-        .frame(minHeight: 72).frame(maxWidth: .infinity)
+        .frame(minHeight: 64).frame(maxWidth: .infinity)
         .background(Color(.secondarySystemBackground))
     }
 
@@ -347,6 +369,11 @@ struct GameView: View {
                 ? "Trace the arc from the green dot ●"
                 : "Draw from the green dot ●"
         case .drawing:
+            if settings.continuousDrawing {
+                return currentLevelType.isCurve
+                    ? "Follow the curve through the orange dot ●"
+                    : "Keep steady — pass through the orange dot ●"
+            }
             return currentLevelType.isCurve
                 ? "Follow the curve — release at the orange dot"
                 : "Keep steady — release at the orange dot"
@@ -365,55 +392,125 @@ struct GameView: View {
                     if ScoringEngine.distance(value.location, config.dots[conn.0]) < dotR * 5 {
                         phase = .drawing; activePath = [value.location]; redoStack = []
                     }
-                case .drawing: activePath.append(value.location)
+
+                case .drawing:
+                    activePath.append(value.location)
+
+                    // ── Continuous drawing ─────────────────────────────
+                    // Score as soon as the finger reaches the end dot,
+                    // then seamlessly start drawing the next connection
+                    // without the user having to lift their finger.
+                    if settings.continuousDrawing, let conn = currentConn {
+                        let endDot   = config.dots[conn.1]
+                        let startDot = config.dots[conn.0]
+                        let distEnd   = ScoringEngine.distance(value.location, endDot)
+                        let distStart = ScoringEngine.distance(value.location, startDot)
+                        if distEnd < dotR * 3.5 && distStart > dotR * 3.5 {
+                            completeCurrentStroke(continuous: true,
+                                                  fingerLocation: value.location)
+                        }
+                    }
+
                 default: break
                 }
             }
             .onEnded { value in
-                guard phase == .drawing, let conn = currentConn else { return }
+                guard phase == .drawing else { return }
+
+                if settings.continuousDrawing {
+                    // Continuous mode: if the finger lifts before reaching
+                    // the end dot, discard the incomplete stroke silently.
+                    activePath = []; phase = .idle
+                    return
+                }
+
+                // ── Classic (non-continuous) mode ─────────────────────
                 activePath.append(value.location)
-                let startDot = config.dots[conn.0], endDot = config.dots[conn.1]
+                completeCurrentStroke(continuous: false, fingerLocation: value.location)
+            }
+    }
 
-                // Score: arc or line. For curve levels, use the arc info
-                // specific to this connection (some partial-arc templates
-                // have a different center/radius per connection).
-                let scoreValue: Int
-                if currentLevelType.isCurve,
-                   let arc = config.arcInfo(for: connectionIndex) {
-                    scoreValue = ScoringEngine.scoreArc(
-                        path: activePath, from: startDot, to: endDot,
-                        circleCenter: arc.center, circleRadius: arc.radius, dotRadius: dotR)
-                } else {
-                    scoreValue = ScoringEngine.score(
-                        path: activePath, from: startDot, to: endDot, dotRadius: dotR)
-                }
+    /// Score the current stroke, record it, advance to the next connection.
+    ///
+    /// - `continuous`: when `true`, uses a short flash (0.6 s), skips the
+    ///   ideal-line overlay, and chains into the next stroke if the next
+    ///   connection starts at the same dot the current one ends at.
+    /// - `fingerLocation`: where the finger is right now, used to seed the
+    ///   next stroke's `activePath` when chaining.
+    private func completeCurrentStroke(continuous: Bool,
+                                       fingerLocation: CGPoint) {
+        guard let conn = currentConn else { return }
+        let startDot = config.dots[conn.0], endDot = config.dots[conn.1]
 
-                lineScores.append(scoreValue)
-                finishedStrokes.append(FinishedStroke(path: activePath, score: scoreValue))
-                activePath = []; phase = .reviewing
-                lastScoredConnIndex = connectionIndex
+        // ── Score ───────────────────────────────────────────────
+        let scoreValue: Int
+        if currentLevelType.isCurve,
+           let arc = config.arcInfo(for: connectionIndex) {
+            scoreValue = ScoringEngine.scoreArc(
+                path: activePath, from: startDot, to: endDot,
+                circleCenter: arc.center, circleRadius: arc.radius, dotRadius: dotR)
+        } else {
+            scoreValue = ScoringEngine.score(
+                path: activePath, from: startDot, to: endDot, dotRadius: dotR)
+        }
 
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { flashScore = scoreValue }
+        lineScores.append(scoreValue)
+        finishedStrokes.append(FinishedStroke(path: activePath, score: scoreValue))
+        lastScoredConnIndex = connectionIndex
 
-                // Ideal highlight
-                showIdeal = true
-                withAnimation(.easeIn(duration: 0.12)) { idealOpacity = 1.0 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    withAnimation(.easeOut(duration: 0.45)) { idealOpacity = 0 }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showIdeal = false }
-                }
+        // Score flash (both modes)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { flashScore = scoreValue }
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    withAnimation(.easeOut(duration: 0.25)) { flashScore = nil }
-                    let next = connectionIndex + 1
-                    if next >= config.connections.count {
-                        connectionIndex = next; phase = .complete
-                        if !resultSaved { saveResult() }
-                    } else {
-                        connectionIndex = next; phase = .idle
-                    }
+        let nextIdx = connectionIndex + 1
+
+        if continuous {
+            // ── Continuous: short flash, no ideal overlay ────────
+            let captured = scoreValue
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                // Only clear if this flash hasn't been overwritten by a newer stroke
+                if flashScore == captured {
+                    withAnimation(.easeOut(duration: 0.2)) { flashScore = nil }
                 }
             }
+
+            if nextIdx >= config.connections.count {
+                connectionIndex = nextIdx; activePath = []; phase = .complete
+                if !resultSaved { saveResult() }
+            } else {
+                connectionIndex = nextIdx
+                let nextConn = config.connections[nextIdx]
+                if nextConn.0 == conn.1 {
+                    // Chained — next connection starts where this one ended.
+                    // Begin a new activePath immediately at the finger.
+                    activePath = [fingerLocation]
+                    // phase stays .drawing
+                } else {
+                    // Not chained — user must lift and re-start from a
+                    // different dot.
+                    activePath = []; phase = .idle
+                }
+            }
+        } else {
+            // ── Classic: ideal highlight + 1.5 s reviewing pause ─
+            activePath = []; phase = .reviewing
+
+            showIdeal = true
+            withAnimation(.easeIn(duration: 0.12)) { idealOpacity = 1.0 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                withAnimation(.easeOut(duration: 0.45)) { idealOpacity = 0 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showIdeal = false }
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                withAnimation(.easeOut(duration: 0.25)) { flashScore = nil }
+                if nextIdx >= config.connections.count {
+                    connectionIndex = nextIdx; phase = .complete
+                    if !resultSaved { saveResult() }
+                } else {
+                    connectionIndex = nextIdx; phase = .idle
+                }
+            }
+        }
     }
 
     // ── Undo / Redo ────────────────────────────────────────────────────────
@@ -423,7 +520,10 @@ struct GameView: View {
         let s = finishedStrokes.removeLast(); let sc = lineScores.removeLast()
         redoStack.append(StrokeRecord(stroke: s, score: sc))
         connectionIndex = max(0, connectionIndex - 1)
-        totalUndosUsed += 1; phase = .idle
+        totalUndosUsed += 1
+        phase = .idle   // reset from .complete back to .idle when undoing the last stroke
+        resultSaved = false   // allow re-save after re-completion
+        showIdeal = false; idealOpacity = 0; flashScore = nil
     }
 
     private func performRedo() {

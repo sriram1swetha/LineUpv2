@@ -20,6 +20,34 @@ struct DotConfiguration {
     /// nil for straight-line games.
     let perConnectionArcs: [(center: CGPoint, radius: CGFloat)?]?
 
+    /// Optional one-line description of the overall shape, surfaced in no-guide
+    /// curve levels so the player knows what they're supposed to trace.
+    let shapeDescription: String?
+
+    /// Optional per-connection hint, parallel to `connections`. Overrides
+    /// `shapeDescription` for a specific connection if present.
+    let connectionHints: [String]?
+
+    /// Custom init with defaults so callers that don't need every field
+    /// can omit the trailing optionals.
+    init(dots: [CGPoint],
+         connections: [(Int, Int)],
+         shapeName: String,
+         circleCenter: CGPoint? = nil,
+         circleRadius: CGFloat? = nil,
+         perConnectionArcs: [(center: CGPoint, radius: CGFloat)?]? = nil,
+         shapeDescription: String? = nil,
+         connectionHints: [String]? = nil) {
+        self.dots = dots
+        self.connections = connections
+        self.shapeName = shapeName
+        self.circleCenter = circleCenter
+        self.circleRadius = circleRadius
+        self.perConnectionArcs = perConnectionArcs
+        self.shapeDescription = shapeDescription
+        self.connectionHints = connectionHints
+    }
+
     var isCurveMode: Bool { circleCenter != nil || perConnectionArcs != nil }
 
     /// Convenience: arc info for a given connection index, or nil if this
@@ -35,6 +63,18 @@ struct DotConfiguration {
             return (center: c, radius: r)
         }
         return nil
+    }
+
+    /// Best available description for a given connection index. Returns the
+    /// per-connection hint if any, otherwise falls back to `shapeDescription`,
+    /// otherwise nil.
+    func hint(for connectionIndex: Int) -> String? {
+        if let hints = connectionHints,
+           connectionIndex >= 0,
+           connectionIndex < hints.count {
+            return hints[connectionIndex]
+        }
+        return shapeDescription
     }
 }
 
@@ -72,7 +112,7 @@ enum LevelGenerator {
             return shapeName(dotCount: dotCount)
         }
         if levelType.isCurve {
-            let names = ["Half Arc", "S-Curve", "Wave", "Double Hump", "Bowl", "Quad Wave"]
+            let names = ["Half Arc", "S-Curve", "Wave", "Double Hump", "Bowl", "Quad Wave", "Oval", "Flower"]
             let i = ((game - 7) % names.count + names.count) % names.count
             return names[i]
         } else {
@@ -135,7 +175,9 @@ enum LevelGenerator {
                                     shapeName: shapeName(dotCount: dotCount),
                                     circleCenter: nil,
                                     circleRadius: nil,
-                                    perConnectionArcs: nil)
+                                    perConnectionArcs: nil,
+                                    shapeDescription: nil,
+                                    connectionHints: nil)
         }
 
         // Asymmetric templates. Index = game - 7.
@@ -152,7 +194,9 @@ enum LevelGenerator {
                                 shapeName: template.name,
                                 circleCenter: nil,
                                 circleRadius: nil,
-                                perConnectionArcs: nil)
+                                perConnectionArcs: nil,
+                                shapeDescription: nil,
+                                connectionHints: nil)
     }
 
     // ── Asymmetric line templates ──────────────────────────────────────────
@@ -195,16 +239,31 @@ enum LevelGenerator {
                         CGPoint(x: -0.85, y:  0.55)
                      ], connections: nil),
 
-        // 5 dots — arrowhead (concave)
+        // 7 dots — right-pointing block arrow (closed 7-edge outline).
+        //
+        //   0────────1
+        //            │
+        //            2      ← outer upper corner of head
+        //             \
+        //              3    ← tip
+        //             /
+        //            4      ← outer lower corner of head
+        //            │
+        //   6────────5
+        //
         AsymTemplate(name: "Arrowhead",
                      unitDots: [
-                        CGPoint(x: -0.75, y: -0.65),
-                        CGPoint(x:  0.85, y:  0.00),
-                        CGPoint(x: -0.75, y:  0.65),
-                        CGPoint(x: -0.30, y:  0.00),
-                        CGPoint(x: -0.75, y: -0.20)
+                        CGPoint(x: -0.80, y: -0.35),   // 0  shaft top-left
+                        CGPoint(x:  0.00, y: -0.35),   // 1  shaft top-right
+                        CGPoint(x:  0.00, y: -0.75),   // 2  upper outer corner of head
+                        CGPoint(x:  0.85, y:  0.00),   // 3  tip
+                        CGPoint(x:  0.00, y:  0.75),   // 4  lower outer corner of head
+                        CGPoint(x:  0.00, y:  0.35),   // 5  shaft bottom-right
+                        CGPoint(x: -0.80, y:  0.35)    // 6  shaft bottom-left
                      ],
-                     connections: [(0,1),(1,2),(2,3),(3,0)] // 4-edge concave outline
+                     // Explicit 7-edge closed outline — do NOT rely on the
+                     // nil auto-chain here so there is zero ambiguity.
+                     connections: [(0,1),(1,2),(2,3),(3,4),(4,5),(5,6),(6,0)]
                     ),
 
         // 5 dots — house (pentagon-ish, asymmetric)
@@ -265,6 +324,63 @@ enum LevelGenerator {
                         CGPoint(x:  0.85, y: -0.55),
                         CGPoint(x:  0.85, y:  0.65)
                      ], connections: nil),
+
+        // 6 dots — laptop (rectangle + inner keyboard/hinge divider line).
+        //
+        //   0───────────1
+        //   │           │
+        //   4 - - - - - 5      ← keyboard/screen divider (inside)
+        //   │           │
+        //   3───────────2
+        //
+        // Outer rectangle edges 0-1-2-3-0, plus the divider 4-5 as a separate
+        // stroke. 5 connections, all 6 dots visited.
+        AsymTemplate(name: "Laptop",
+                     unitDots: [
+                        CGPoint(x: -0.85, y: -0.55),   // 0  top-left
+                        CGPoint(x:  0.85, y: -0.55),   // 1  top-right
+                        CGPoint(x:  0.85, y:  0.55),   // 2  bottom-right
+                        CGPoint(x: -0.85, y:  0.55),   // 3  bottom-left
+                        CGPoint(x: -0.75, y:  0.10),   // 4  divider left
+                        CGPoint(x:  0.75, y:  0.10)    // 5  divider right
+                     ],
+                     connections: [(0,1),(1,2),(2,3),(3,0),(4,5)]
+                    ),
+
+        // 7 dots — isometric cube outline (hexagonal silhouette + 3 interior
+        // edges that all meet at the central near-corner).
+        //
+        //        0
+        //       / \
+        //      /   \
+        //     5     1
+        //     │\   /│
+        //     │ \ / │
+        //     │  6  │       ← center (near corner of cube)
+        //     │ / \ │
+        //     │/   \│
+        //     4     2
+        //      \   /
+        //       \ /
+        //        3
+        //
+        // 6 silhouette edges around the hexagon, plus 3 interior edges
+        // (6-0, 6-2, 6-4) = 9 connections total.
+        AsymTemplate(name: "Cube 3D",
+                     unitDots: [
+                        CGPoint(x:  0.00, y: -0.85),   // 0  top
+                        CGPoint(x:  0.80, y: -0.42),   // 1  upper-right
+                        CGPoint(x:  0.80, y:  0.42),   // 2  lower-right
+                        CGPoint(x:  0.00, y:  0.85),   // 3  bottom
+                        CGPoint(x: -0.80, y:  0.42),   // 4  lower-left
+                        CGPoint(x: -0.80, y: -0.42),   // 5  upper-left
+                        CGPoint(x:  0.00, y:  0.00)    // 6  center / near-corner
+                     ],
+                     connections: [
+                        (0,1),(1,2),(2,3),(3,4),(4,5),(5,0),  // hex silhouette
+                        (6,0),(6,2),(6,4)                      // interior Y
+                     ]
+                    ),
     ]
 
     private static func asymmetricLineTemplate(forIndex idx: Int) -> AsymTemplate {
@@ -304,12 +420,17 @@ enum LevelGenerator {
                 ? [(0, 1)]
                 : (0..<dotCount).map { ($0, ($0 + 1) % dotCount) }
             let arcLabel = dotCount == 2 ? "Arc" : "Circle-\(dotCount)"
+            let desc = dotCount == 2
+                ? "Trace the curved arc between the two dots"
+                : "Trace each arc along the same circle — the dots sit evenly on it"
             return DotConfiguration(dots: dots,
                                     connections: connections,
                                     shapeName: arcLabel,
                                     circleCenter: CGPoint(x: cx, y: cy),
                                     circleRadius: radius,
-                                    perConnectionArcs: nil)
+                                    perConnectionArcs: nil,
+                                    shapeDescription: desc,
+                                    connectionHints: nil)
         }
 
         // Partial-arc templates — index = game - 7.
@@ -338,7 +459,9 @@ enum LevelGenerator {
             waveThreeArcs,
             doubleHumpArcs,
             bigBowlArc,
-            quadWaveArcs
+            quadWaveArcs,
+            ovalArcs,
+            flowerArcs
         ]
         let n = templates.count
         let i = ((idx % n) + n) % n
@@ -361,7 +484,9 @@ enum LevelGenerator {
             connections: [(0, 1)],
             shapeName: "Half Arc",
             circleCenter: nil, circleRadius: nil,
-            perConnectionArcs: [(center: CGPoint(x: cx, y: cy), radius: arcR)]
+            perConnectionArcs: [(center: CGPoint(x: cx, y: cy), radius: arcR)],
+            shapeDescription: "Draw a half-circle arc between the two dots",
+            connectionHints: nil
         )
     }
 
@@ -389,6 +514,11 @@ enum LevelGenerator {
             perConnectionArcs: [
                 (center: center1, radius: arcR1),
                 (center: center2, radius: arcR2)
+            ],
+            shapeDescription: "Draw an S-shape — arcs curve in opposite directions",
+            connectionHints: [
+                "First arc of the S — curve outward to the middle dot",
+                "Second arc of the S — curve the OPPOSITE way to the last dot"
             ]
         )
     }
@@ -423,7 +553,13 @@ enum LevelGenerator {
             connections: [(0, 1), (1, 2), (2, 3)],
             shapeName: "Wave",
             circleCenter: nil, circleRadius: nil,
-            perConnectionArcs: arcs
+            perConnectionArcs: arcs,
+            shapeDescription: "Draw a wave — three arcs alternating up/down",
+            connectionHints: [
+                "Ripple 1 of 3 — arc bulges one way",
+                "Ripple 2 of 3 — arc bulges the OPPOSITE way",
+                "Ripple 3 of 3 — arc bulges back again"
+            ]
         )
     }
 
@@ -456,7 +592,12 @@ enum LevelGenerator {
             connections: [(0, 1), (1, 2)],
             shapeName: "Double Hump",
             circleCenter: nil, circleRadius: nil,
-            perConnectionArcs: arcs
+            perConnectionArcs: arcs,
+            shapeDescription: "Draw two humps side-by-side (∩∩) — both arcs bulge the SAME way",
+            connectionHints: [
+                "First hump — arc outward",
+                "Second hump — arc outward in the same direction"
+            ]
         )
     }
 
@@ -479,7 +620,9 @@ enum LevelGenerator {
             connections: [(0, 1)],
             shapeName: "Bowl",
             circleCenter: nil, circleRadius: nil,
-            perConnectionArcs: [(center: center, radius: rr)]
+            perConnectionArcs: [(center: center, radius: rr)],
+            shapeDescription: "Draw a wide, shallow bowl — arc dips far between the dots",
+            connectionHints: nil
         )
     }
 
@@ -507,6 +650,95 @@ enum LevelGenerator {
             dots: dots,
             connections: connections,
             shapeName: "Quad Wave",
+            circleCenter: nil, circleRadius: nil,
+            perConnectionArcs: arcs
+        )
+    }
+
+    // MARK: Oval — 2 dots, 2 semi-circular arcs forming an ellipse-like outline
+    //
+    //  Dots sit on the horizontal diameter. Two arcs — one bulging UP
+    //  (center below the chord in screen coords) and one bulging DOWN
+    //  (center above the chord). Both arcs are ≤180° so ArcPath picks
+    //  the intended shorter side.
+    //
+    //        ╭──────╮        arc (0→1) bulges UP
+    //    dot0 ●────● dot1
+    //        ╰──────╯        arc (1→0) bulges DOWN
+
+    private static func ovalArcs(cx: CGFloat, cy: CGFloat,
+                                 radius r: CGFloat,
+                                 size: CGSize,
+                                 usableTop: CGFloat,
+                                 usableHeight: CGFloat) -> DotConfiguration {
+        let a: CGFloat = 0.85 * r          // half-width (horizontal spread)
+        let k: CGFloat = 0.70 * r          // vertical offset of arc centers
+        let dot0 = CGPoint(x: cx - a, y: cy)
+        let dot1 = CGPoint(x: cx + a, y: cy)
+
+        // Arc 0→1: center BELOW chord → arc bulges UP (screen-up = smaller y).
+        let center01 = CGPoint(x: cx, y: cy + k)
+        let r01 = sqrt(a * a + k * k)
+
+        // Arc 1→0: center ABOVE chord → arc bulges DOWN.
+        let center10 = CGPoint(x: cx, y: cy - k)
+        let r10 = r01                      // same radius by symmetry
+
+        return DotConfiguration(
+            dots: [dot0, dot1],
+            connections: [(0, 1), (1, 0)],
+            shapeName: "Oval",
+            circleCenter: nil, circleRadius: nil,
+            perConnectionArcs: [
+                (center: center01, radius: r01),
+                (center: center10, radius: r10)
+            ]
+        )
+    }
+
+    // MARK: Flower — 4 dots in a diamond, 4 inward-bulging arcs
+    //
+    // Dots at N/E/S/W on a circle of radius R. Each arc's center sits at
+    // the OUTSIDE corner of the bounding square (making the arc bow
+    // inward toward the middle) to create a four-petal / four-pointed
+    // star flower shape.
+    //
+    //          0           N
+    //        ╱   ╲
+    //      3       1       W and E
+    //        ╲   ╱
+    //          2           S
+    //
+    // Centers are at (R, -R), (R, R), (-R, R), (-R, -R) relative to the
+    // shape center. Each arc subtends exactly 90° of its circle (≤180°).
+
+    private static func flowerArcs(cx: CGFloat, cy: CGFloat,
+                                   radius r: CGFloat,
+                                   size: CGSize,
+                                   usableTop: CGFloat,
+                                   usableHeight: CGFloat) -> DotConfiguration {
+        let R: CGFloat = 0.75 * r
+        let dots = [
+            CGPoint(x: cx,     y: cy - R),  // 0  top (N)
+            CGPoint(x: cx + R, y: cy),       // 1  right (E)
+            CGPoint(x: cx,     y: cy + R),   // 2  bottom (S)
+            CGPoint(x: cx - R, y: cy)        // 3  left (W)
+        ]
+        // Each center sits at the outside corner diagonal from the midpoint
+        // of its arc. The radius from that corner to either adjacent dot is R.
+        let centers = [
+            CGPoint(x: cx + R, y: cy - R),   // arc 0→1 center (NE corner)
+            CGPoint(x: cx + R, y: cy + R),   // arc 1→2 center (SE corner)
+            CGPoint(x: cx - R, y: cy + R),   // arc 2→3 center (SW corner)
+            CGPoint(x: cx - R, y: cy - R)    // arc 3→0 center (NW corner)
+        ]
+        let arcs: [(center: CGPoint, radius: CGFloat)?] = centers.map { c in
+            (center: c, radius: R)
+        }
+        return DotConfiguration(
+            dots: dots,
+            connections: [(0, 1), (1, 2), (2, 3), (3, 0)],
+            shapeName: "Flower",
             circleCenter: nil, circleRadius: nil,
             perConnectionArcs: arcs
         )

@@ -5,12 +5,13 @@ import CoreGraphics
 // ── Level type — the 6 fixed level kinds ──────────────────────────────────────
 
 enum LevelType: Int, CaseIterable, Codable {
-    case linesWithGuide       = 1   // Level 1: straight lines + guide
+    case linesWithGuide       = 1   // Level 1: straight lines + guide, thick
     case linesThinWithGuide   = 2   // Level 2: straight lines, thinner + guide
-    case linesNoGuide         = 3   // Level 3: straight lines, no guide
+    case linesNoGuide         = 3   // Level 3: straight lines, no guide, thick
     case linesThinNoGuide     = 4   // Level 4: straight lines, thin, no guide
-    case curvesWithGuide      = 5   // Level 5: arcs along a circle + guide arc
-    case curvesNoGuide        = 6   // Level 6: arcs along a circle, no guide
+    case curvesWithGuide      = 5   // Level 5: arc-along-a-circle + guide, thick
+    case curvesNoGuide        = 6   // Level 6: arc-along-a-circle + guide, THIN
+                                    // (curves always show a guide — see hasGuide)
 
     var title: String {
         switch self {
@@ -19,7 +20,7 @@ enum LevelType: Int, CaseIterable, Codable {
         case .linesNoGuide:       return "Lines · No Guide"
         case .linesThinNoGuide:   return "Lines · Thin · No Guide"
         case .curvesWithGuide:    return "Curves · Guided"
-        case .curvesNoGuide:      return "Curves · No Guide"
+        case .curvesNoGuide:      return "Curves · Thin · Guided"
         }
     }
 
@@ -30,7 +31,7 @@ enum LevelType: Int, CaseIterable, Codable {
         case .linesNoGuide:       return "No guides — trust your eye"
         case .linesThinNoGuide:   return "Thin strokes, no guides"
         case .curvesWithGuide:    return "Trace arcs along a circle with guides"
-        case .curvesNoGuide:      return "Curve freehand — precision required"
+        case .curvesNoGuide:      return "Thin curve strokes — precision required"
         }
     }
 
@@ -38,13 +39,17 @@ enum LevelType: Int, CaseIterable, Codable {
         self == .curvesWithGuide || self == .curvesNoGuide
     }
 
+    /// Curves always render a guide regardless of this flag — tracing a
+    /// partial arc without any reference is basically guessing. This flag
+    /// still controls whether straight-line levels get a dashed guide.
     var hasGuide: Bool {
         self == .linesWithGuide || self == .linesThinWithGuide ||
         self == .curvesWithGuide
     }
 
     var isThin: Bool {
-        self == .linesThinWithGuide || self == .linesThinNoGuide
+        self == .linesThinWithGuide || self == .linesThinNoGuide ||
+        self == .curvesNoGuide
     }
 
     var badgeColor: String {
@@ -92,6 +97,16 @@ class GameSettings: ObservableObject {
         didSet { defaults.set(thinStroke, forKey: K.thinStroke) }
     }
 
+    // ── Continuous drawing ─────────────────────────────────────────────────
+    /// When true, the player can draw dot-1 → dot-2 → dot-3 → … in a single
+    /// uninterrupted gesture. Each sub-stroke is scored the moment the finger
+    /// reaches the next end dot and the stroke color/target flips immediately
+    /// (no 1.5s pause, no required lift-and-re-tap for chained connections).
+    /// When false, each connection requires a separate touch-and-release.
+    @Published var continuousDrawing: Bool {
+        didSet { defaults.set(continuousDrawing, forKey: K.continuousDrawing) }
+    }
+
     private enum K {
         static let gamesPerLevel    = "lu_gamesPerLevel"
         static let minGamesPerLevel = "lu_minGamesPerLevel"
@@ -99,6 +114,7 @@ class GameSettings: ObservableObject {
         static let dotDiameter      = "lu_dotDiameter"
         static let thickStroke      = "lu_thickStroke"
         static let thinStroke       = "lu_thinStroke"
+        static let continuousDrawing = "lu_continuousDrawing"
     }
 
     private init() {
@@ -108,6 +124,7 @@ class GameSettings: ObservableObject {
         dotDiameter      = defaults.object(forKey: K.dotDiameter)      as? Double ?? 32.0
         thickStroke      = defaults.object(forKey: K.thickStroke)      as? Double ?? 8.0
         thinStroke       = defaults.object(forKey: K.thinStroke)       as? Double ?? 3.0
+        continuousDrawing = defaults.object(forKey: K.continuousDrawing) as? Bool ?? true
     }
 
     // ── Computed helpers ───────────────────────────────────────────────────
