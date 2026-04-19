@@ -59,7 +59,9 @@ struct GameCard: View {
         LevelGenerator.previewName(levelType: levelType, dotCount: dotCount, game: game)
     }
     private var best: Int?     { scoreStore.bestScore(level: level, game: game) }
-    private var maxScore: Int  { (dotCount == 2 ? 1 : dotCount) * 100 }
+    private var maxScore: Int  {
+        LevelGenerator.connectionCount(levelType: levelType, dotCount: dotCount, game: game) * 100
+    }
     private var isComplete: Bool { scoreStore.isGameCompleted(level: level, game: game) }
     private var badgeColor: Color { Color(hex: levelType.badgeColor) }
 
@@ -109,6 +111,8 @@ struct GameCard: View {
     }
 
     private var emoji: String {
+        if levelType == .shapesGuided { return "🏠" }
+        if levelType == .curveShapesGuided { return "🌸" }
         if levelType.isCurve {
             return dotCount == 2 ? "〰️" : "⭕"
         }

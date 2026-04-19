@@ -30,7 +30,7 @@ struct SettingsView: View {
             } header: {
                 Label("Level Structure (Fixed)", systemImage: "lock.shield")
             } footer: {
-                Text("LineUp has 6 fixed level types progressing from guided lines to freehand curves. Complete each level to unlock the next.")
+                Text("LineUp has 8 fixed level types progressing from guided lines to freehand curves and special shapes. Complete each level to unlock the next.")
             }
 
             // ── Games per level ───────────────────────────────────────────

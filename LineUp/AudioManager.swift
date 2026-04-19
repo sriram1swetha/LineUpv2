@@ -133,7 +133,7 @@ final class AudioManager: NSObject, ObservableObject {
             p.numberOfLoops = 0      // single play; we advance manually
             p.volume = 0.7
             p.prepareToPlay()
-            p.play()
+            // p.play()
             player = p
             currentTrackName = displayName(for: track.name)
             isPlaying = true

@@ -105,6 +105,17 @@ enum LevelGenerator {
     ///  - Games 1–6 use the regular polygon / full-circle names.
     ///  - Games 7+ use the asymmetric / partial-arc template names.
     static func previewName(levelType: LevelType, dotCount: Int, game: Int) -> String {
+        // Shape levels: every game maps directly to a template.
+        if levelType == .shapesGuided {
+            return asymmetricLineTemplate(forIndex: game - 1).name
+        }
+        if levelType == .curveShapesGuided {
+            let names = ["Half Arc", "S-Curve", "Wave", "Double Hump", "Bowl", "Quad Wave", "Oval", "Flower"]
+            let i = ((game - 1) % names.count + names.count) % names.count
+            return names[i]
+        }
+        // Regular levels: games 1–6 use polygon/circle names,
+        // games 7+ use asymmetric/partial-arc template names.
         if game <= 6 {
             if levelType.isCurve {
                 return dotCount == 2 ? "Arc" : "Circle-\(dotCount)"
@@ -120,6 +131,37 @@ enum LevelGenerator {
         }
     }
 
+    /// Number of connections (edges) for a given level type and game index.
+    /// Used for maxScore display on game cards without building geometry.
+    static func connectionCount(levelType: LevelType, dotCount: Int, game: Int) -> Int {
+        // Shape levels — template drives everything.
+        if levelType == .shapesGuided {
+            let t = asymmetricLineTemplate(forIndex: game - 1)
+            return t.connections?.count ?? t.unitDots.count   // nil = closed loop = dot count edges
+        }
+        if levelType == .curveShapesGuided {
+            // Partial-arc template connection counts (same order as dispatch array).
+            let counts = [1, 2, 3, 2, 1, 4, 2, 4]
+            let n = counts.count
+            let i = ((game - 1) % n + n) % n
+            return counts[i]
+        }
+        // Regular polygon/circle levels: games 1–6.
+        if game <= 6 {
+            return dotCount == 2 ? 1 : dotCount
+        }
+        // Asymmetric line templates for games 7+.
+        if levelType.isCurve {
+            let counts = [1, 2, 3, 2, 1, 4, 2, 4]
+            let n = counts.count
+            let i = ((game - 7) % n + n) % n
+            return counts[i]
+        } else {
+            let t = asymmetricLineTemplate(forIndex: game - 7)
+            return t.connections?.count ?? t.unitDots.count
+        }
+    }
+
     /// Build configuration for a given level type and game index.
     static func configuration(levelType: LevelType,
                               dotCount: Int,
@@ -128,17 +170,18 @@ enum LevelGenerator {
                               dotRadius: CGFloat,
                               topReserved: CGFloat = 68) -> DotConfiguration {
         if levelType.isCurve {
-            return curveConfig(dotCount: dotCount, game: game, in: size,
-                               dotRadius: dotRadius, topReserved: topReserved)
+            return curveConfig(levelType: levelType, dotCount: dotCount, game: game,
+                               in: size, dotRadius: dotRadius, topReserved: topReserved)
         } else {
-            return lineConfig(dotCount: dotCount, game: game, in: size,
-                              dotRadius: dotRadius, topReserved: topReserved)
+            return lineConfig(levelType: levelType, dotCount: dotCount, game: game,
+                              in: size, dotRadius: dotRadius, topReserved: topReserved)
         }
     }
 
     // ── Straight line configuration ────────────────────────────────────────
 
-    static func lineConfig(dotCount: Int,
+    static func lineConfig(levelType: LevelType,
+                           dotCount: Int,
                            game: Int,
                            in size: CGSize,
                            dotRadius: CGFloat,
@@ -150,53 +193,56 @@ enum LevelGenerator {
         let cy = usableTop + usableHeight / 2
         let polyRadius = min(size.width, usableHeight) / 2 - padding
 
-        // For games 1...6 keep the original regular-polygon behaviour. For
-        // games 7+ we cycle through asymmetric / concave templates.
-        if game <= 6 {
-            var dots: [CGPoint]
-            if dotCount == 2 {
-                let offset = polyRadius * 0.80
-                dots = [CGPoint(x: cx - offset, y: cy),
-                        CGPoint(x: cx + offset, y: cy)]
-            } else {
-                let startAngle: CGFloat = -.pi / 2
-                dots = (0..<dotCount).map { i in
-                    let angle = startAngle + CGFloat(i) * 2 * .pi / CGFloat(dotCount)
-                    return CGPoint(x: cx + polyRadius * cos(angle),
-                                   y: cy + polyRadius * sin(angle))
-                }
+        // Shape levels (Level 7) use asymmetric templates for EVERY game.
+        // Regular line levels only use them for games 7+.
+        let useTemplate: Bool
+        let templateIndex: Int
+        if levelType == .shapesGuided {
+            useTemplate = true
+            templateIndex = game - 1      // game 1 = template[0]
+        } else if game > 6 {
+            useTemplate = true
+            templateIndex = game - 7      // game 7 = template[0]
+        } else {
+            useTemplate = false
+            templateIndex = 0             // unused
+        }
+
+        if useTemplate {
+            let template = asymmetricLineTemplate(forIndex: templateIndex)
+            let dots = template.unitDots.map { p in
+                CGPoint(x: cx + p.x * polyRadius,
+                        y: cy + p.y * polyRadius)
             }
-            let connections: [(Int, Int)] = dotCount == 2
-                ? [(0, 1)]
-                : (0..<dotCount).map { ($0, ($0 + 1) % dotCount) }
+            let connections = template.connections
+                ?? (0..<dots.count).map { ($0, ($0 + 1) % dots.count) }
 
             return DotConfiguration(dots: dots,
                                     connections: connections,
-                                    shapeName: shapeName(dotCount: dotCount),
-                                    circleCenter: nil,
-                                    circleRadius: nil,
-                                    perConnectionArcs: nil,
-                                    shapeDescription: nil,
-                                    connectionHints: nil)
+                                    shapeName: template.name)
         }
 
-        // Asymmetric templates. Index = game - 7.
-        let template = asymmetricLineTemplate(forIndex: game - 7)
-        let dots = template.unitDots.map { p in
-            CGPoint(x: cx + p.x * polyRadius,
-                    y: cy + p.y * polyRadius)
+        // Regular polygon for games 1–6 on line levels 1-4.
+        var dots: [CGPoint]
+        if dotCount == 2 {
+            let offset = polyRadius * 0.80
+            dots = [CGPoint(x: cx - offset, y: cy),
+                    CGPoint(x: cx + offset, y: cy)]
+        } else {
+            let startAngle: CGFloat = -.pi / 2
+            dots = (0..<dotCount).map { i in
+                let angle = startAngle + CGFloat(i) * 2 * .pi / CGFloat(dotCount)
+                return CGPoint(x: cx + polyRadius * cos(angle),
+                               y: cy + polyRadius * sin(angle))
+            }
         }
-        let connections = template.connections
-            ?? (0..<dots.count).map { ($0, ($0 + 1) % dots.count) }
+        let connections: [(Int, Int)] = dotCount == 2
+            ? [(0, 1)]
+            : (0..<dotCount).map { ($0, ($0 + 1) % dotCount) }
 
         return DotConfiguration(dots: dots,
                                 connections: connections,
-                                shapeName: template.name,
-                                circleCenter: nil,
-                                circleRadius: nil,
-                                perConnectionArcs: nil,
-                                shapeDescription: nil,
-                                connectionHints: nil)
+                                shapeName: shapeName(dotCount: dotCount))
     }
 
     // ── Asymmetric line templates ──────────────────────────────────────────
@@ -397,7 +443,8 @@ enum LevelGenerator {
     //                form a full circle. Each connection has its own arc
     //                center and radius via `perConnectionArcs`.
 
-    static func curveConfig(dotCount: Int,
+    static func curveConfig(levelType: LevelType,
+                            dotCount: Int,
                             game: Int,
                             in size: CGSize,
                             dotRadius: CGFloat,
@@ -409,37 +456,50 @@ enum LevelGenerator {
         let cy = usableTop + usableHeight / 2
         let radius = min(size.width, usableHeight) / 2 - padding
 
-        if game <= 6 {
-            let startAngle: CGFloat = -.pi / 2
-            let dots = (0..<dotCount).map { i -> CGPoint in
-                let angle = startAngle + CGFloat(i) * 2 * .pi / CGFloat(dotCount)
-                return CGPoint(x: cx + radius * cos(angle),
-                               y: cy + radius * sin(angle))
-            }
-            let connections: [(Int, Int)] = dotCount == 2
-                ? [(0, 1)]
-                : (0..<dotCount).map { ($0, ($0 + 1) % dotCount) }
-            let arcLabel = dotCount == 2 ? "Arc" : "Circle-\(dotCount)"
-            let desc = dotCount == 2
-                ? "Trace the curved arc between the two dots"
-                : "Trace each arc along the same circle — the dots sit evenly on it"
-            return DotConfiguration(dots: dots,
-                                    connections: connections,
-                                    shapeName: arcLabel,
-                                    circleCenter: CGPoint(x: cx, y: cy),
-                                    circleRadius: radius,
-                                    perConnectionArcs: nil,
-                                    shapeDescription: desc,
-                                    connectionHints: nil)
+        // Curve shape levels (Level 8) use partial-arc templates for EVERY game.
+        // Regular curve levels only use them for games 7+.
+        let useTemplate: Bool
+        let templateIndex: Int
+        if levelType == .curveShapesGuided {
+            useTemplate = true
+            templateIndex = game - 1      // game 1 = template[0]
+        } else if game > 6 {
+            useTemplate = true
+            templateIndex = game - 7      // game 7 = template[0]
+        } else {
+            useTemplate = false
+            templateIndex = 0             // unused
         }
 
-        // Partial-arc templates — index = game - 7.
-        return partialArcTemplate(forIndex: game - 7,
-                                  cx: cx, cy: cy,
-                                  size: size,
-                                  usableTop: usableTop,
-                                  usableHeight: usableHeight,
-                                  radius: radius)
+        if useTemplate {
+            return partialArcTemplate(forIndex: templateIndex,
+                                      cx: cx, cy: cy,
+                                      size: size,
+                                      usableTop: usableTop,
+                                      usableHeight: usableHeight,
+                                      radius: radius)
+        }
+
+        // Full-circle arcs for games 1–6 on curve levels 5-6.
+        let startAngle: CGFloat = -.pi / 2
+        let dots = (0..<dotCount).map { i -> CGPoint in
+            let angle = startAngle + CGFloat(i) * 2 * .pi / CGFloat(dotCount)
+            return CGPoint(x: cx + radius * cos(angle),
+                           y: cy + radius * sin(angle))
+        }
+        let connections: [(Int, Int)] = dotCount == 2
+            ? [(0, 1)]
+            : (0..<dotCount).map { ($0, ($0 + 1) % dotCount) }
+        let arcLabel = dotCount == 2 ? "Arc" : "Circle-\(dotCount)"
+        let desc = dotCount == 2
+            ? "Trace the curved arc between the two dots"
+            : "Trace each arc along the same circle — the dots sit evenly on it"
+        return DotConfiguration(dots: dots,
+                                connections: connections,
+                                shapeName: arcLabel,
+                                circleCenter: CGPoint(x: cx, y: cy),
+                                circleRadius: radius,
+                                shapeDescription: desc)
     }
 
     // Each template returns the dots, connections and per-connection arcs.

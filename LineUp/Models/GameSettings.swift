@@ -2,7 +2,7 @@ import Foundation
 import Combine
 import CoreGraphics
 
-// ── Level type — the 6 fixed level kinds ──────────────────────────────────────
+// ── Level type — the 8 fixed level kinds ──────────────────────────────────────
 
 enum LevelType: Int, CaseIterable, Codable {
     case linesWithGuide       = 1   // Level 1: straight lines + guide, thick
@@ -11,7 +11,8 @@ enum LevelType: Int, CaseIterable, Codable {
     case linesThinNoGuide     = 4   // Level 4: straight lines, thin, no guide
     case curvesWithGuide      = 5   // Level 5: arc-along-a-circle + guide, thick
     case curvesNoGuide        = 6   // Level 6: arc-along-a-circle + guide, THIN
-                                    // (curves always show a guide — see hasGuide)
+    case shapesGuided         = 7   // Level 7: special line shapes (House, Cube…)
+    case curveShapesGuided    = 8   // Level 8: special curve shapes (Oval, Flower…)
 
     var title: String {
         switch self {
@@ -21,6 +22,8 @@ enum LevelType: Int, CaseIterable, Codable {
         case .linesThinNoGuide:   return "Lines · Thin · No Guide"
         case .curvesWithGuide:    return "Curves · Guided"
         case .curvesNoGuide:      return "Curves · Thin · Guided"
+        case .shapesGuided:       return "Shapes · Guided"
+        case .curveShapesGuided:  return "Curve Shapes · Guided"
         }
     }
 
@@ -32,24 +35,37 @@ enum LevelType: Int, CaseIterable, Codable {
         case .linesThinNoGuide:   return "Thin strokes, no guides"
         case .curvesWithGuide:    return "Trace arcs along a circle with guides"
         case .curvesNoGuide:      return "Thin curve strokes — precision required"
+        case .shapesGuided:       return "Houses, cubes, arrows & more"
+        case .curveShapesGuided:  return "Ovals, flowers & creative curves"
         }
     }
 
     var isCurve: Bool {
-        self == .curvesWithGuide || self == .curvesNoGuide
+        self == .curvesWithGuide || self == .curvesNoGuide || self == .curveShapesGuided
     }
 
     /// Curves always render a guide regardless of this flag — tracing a
     /// partial arc without any reference is basically guessing. This flag
     /// still controls whether straight-line levels get a dashed guide.
     var hasGuide: Bool {
-        self == .linesWithGuide || self == .linesThinWithGuide ||
-        self == .curvesWithGuide
+        switch self {
+        case .linesWithGuide, .linesThinWithGuide,
+             .curvesWithGuide, .shapesGuided, .curveShapesGuided:
+            return true
+        default:
+            return false
+        }
     }
 
     var isThin: Bool {
         self == .linesThinWithGuide || self == .linesThinNoGuide ||
         self == .curvesNoGuide
+    }
+
+    /// Shape levels use a fixed set of templates — every game maps directly
+    /// to a template instead of the polygon/circle progression.
+    var isShapeLevel: Bool {
+        self == .shapesGuided || self == .curveShapesGuided
     }
 
     var badgeColor: String {
@@ -60,10 +76,12 @@ enum LevelType: Int, CaseIterable, Codable {
         case .linesThinNoGuide:   return "FF5722"  // deep orange
         case .curvesWithGuide:    return "9C27B0"  // purple
         case .curvesNoGuide:      return "E91E63"  // pink
+        case .shapesGuided:       return "4CAF50"  // green
+        case .curveShapesGuided:  return "00BCD4"  // teal
         }
     }
 
-    static let totalLevels = 6
+    static let totalLevels = 8
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────────
@@ -139,6 +157,6 @@ class GameSettings: ObservableObject {
     /// Number of dots for game index (1-based). Game 1 → 2 dots, Game 2 → 3, etc.
     func dotCount(forGame game: Int) -> Int { game + 1 }
 
-    /// All 6 level types in fixed order
+    /// All 8 level types in fixed order
     var levelTypes: [LevelType] { LevelType.allCases }
 }

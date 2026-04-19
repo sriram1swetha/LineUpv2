@@ -405,7 +405,9 @@ struct GameView: View {
                         let startDot = config.dots[conn.0]
                         let distEnd   = ScoringEngine.distance(value.location, endDot)
                         let distStart = ScoringEngine.distance(value.location, startDot)
-                        if distEnd < dotR * 3.5 && distStart > dotR * 3.5 {
+                        // Finger must be ON the end dot (≤ 1.5 radii from center)
+                        // AND must have moved away from the start dot first.
+                        if distEnd < dotR * 1.5 && distStart > dotR * 2.5 {
                             completeCurrentStroke(continuous: true,
                                                   fingerLocation: value.location)
                         }
@@ -441,6 +443,13 @@ struct GameView: View {
                                        fingerLocation: CGPoint) {
         guard let conn = currentConn else { return }
         let startDot = config.dots[conn.0], endDot = config.dots[conn.1]
+
+        // Snap the stroke endpoints to the actual dot centers so the
+        // rendered line visually touches both dots.
+        if !activePath.isEmpty {
+            activePath[0] = startDot
+            activePath.append(endDot)
+        }
 
         // ── Score ───────────────────────────────────────────────
         let scoreValue: Int
