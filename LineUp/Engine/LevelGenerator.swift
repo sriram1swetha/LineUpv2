@@ -9,24 +9,21 @@ struct DotConfiguration {
     let shapeName: String
 
     /// Default circle (used by simple full-circle curve games).
-    /// nil for straight-line games AND for multi-arc games that use
-    /// `perConnectionArcs` instead.
     let circleCenter: CGPoint?
     let circleRadius: CGFloat?
 
     /// Per-connection arc geometry. When present, parallel to `connections`.
-    /// Each entry, if non-nil, supplies (center, radius) for that connection's
-    /// arc. nil entries fall back to (`circleCenter`, `circleRadius`).
-    /// nil for straight-line games.
     let perConnectionArcs: [(center: CGPoint, radius: CGFloat)?]?
 
-    /// Optional one-line description of the overall shape, surfaced in no-guide
-    /// curve levels so the player knows what they're supposed to trace.
+    /// Optional one-line description of the overall shape.
     let shapeDescription: String?
 
-    /// Optional per-connection hint, parallel to `connections`. Overrides
-    /// `shapeDescription` for a specific connection if present.
+    /// Optional per-connection hint, parallel to `connections`.
     let connectionHints: [String]?
+
+    /// Maze walls — line segments the player should avoid touching.
+    /// nil for non-maze levels.
+    let walls: [(CGPoint, CGPoint)]?
 
     /// Custom init with defaults so callers that don't need every field
     /// can omit the trailing optionals.
@@ -37,7 +34,8 @@ struct DotConfiguration {
          circleRadius: CGFloat? = nil,
          perConnectionArcs: [(center: CGPoint, radius: CGFloat)?]? = nil,
          shapeDescription: String? = nil,
-         connectionHints: [String]? = nil) {
+         connectionHints: [String]? = nil,
+         walls: [(CGPoint, CGPoint)]? = nil) {
         self.dots = dots
         self.connections = connections
         self.shapeName = shapeName
@@ -46,9 +44,11 @@ struct DotConfiguration {
         self.perConnectionArcs = perConnectionArcs
         self.shapeDescription = shapeDescription
         self.connectionHints = connectionHints
+        self.walls = walls
     }
 
     var isCurveMode: Bool { circleCenter != nil || perConnectionArcs != nil }
+    var isMaze: Bool { walls != nil && !(walls?.isEmpty ?? true) }
 
     /// Convenience: arc info for a given connection index, or nil if this
     /// connection is a straight line.
@@ -105,14 +105,15 @@ enum LevelGenerator {
     ///  - Games 1–6 use the regular polygon / full-circle names.
     ///  - Games 7+ use the asymmetric / partial-arc template names.
     static func previewName(levelType: LevelType, dotCount: Int, game: Int) -> String {
-        // Shape levels: every game maps directly to a template.
+        // JSON-driven levels: use TemplateLoader for names.
         if levelType == .shapesGuided {
-            return asymmetricLineTemplate(forIndex: game - 1).name
+            return TemplateLoader.lineShapeName(index: game - 1)
         }
         if levelType == .curveShapesGuided {
-            let names = ["Half Arc", "S-Curve", "Wave", "Double Hump", "Bowl", "Quad Wave", "Oval", "Flower"]
-            let i = ((game - 1) % names.count + names.count) % names.count
-            return names[i]
+            return TemplateLoader.curveShapeName(index: game - 1)
+        }
+        if levelType.isMaze {
+            return TemplateLoader.mazeName(index: game - 1)
         }
         // Regular levels: games 1–6 use polygon/circle names,
         // games 7+ use asymmetric/partial-arc template names.
@@ -123,28 +124,23 @@ enum LevelGenerator {
             return shapeName(dotCount: dotCount)
         }
         if levelType.isCurve {
-            let names = ["Half Arc", "S-Curve", "Wave", "Double Hump", "Bowl", "Quad Wave", "Oval", "Flower"]
-            let i = ((game - 7) % names.count + names.count) % names.count
-            return names[i]
+            return TemplateLoader.curveShapeName(index: game - 7)
         } else {
             return asymmetricLineTemplate(forIndex: game - 7).name
         }
     }
 
     /// Number of connections (edges) for a given level type and game index.
-    /// Used for maxScore display on game cards without building geometry.
     static func connectionCount(levelType: LevelType, dotCount: Int, game: Int) -> Int {
-        // Shape levels — template drives everything.
+        // JSON-driven levels.
         if levelType == .shapesGuided {
-            let t = asymmetricLineTemplate(forIndex: game - 1)
-            return t.connections?.count ?? t.unitDots.count   // nil = closed loop = dot count edges
+            return TemplateLoader.lineShapeConnectionCount(index: game - 1)
         }
         if levelType == .curveShapesGuided {
-            // Partial-arc template connection counts (same order as dispatch array).
-            let counts = [1, 2, 3, 2, 1, 4, 2, 4]
-            let n = counts.count
-            let i = ((game - 1) % n + n) % n
-            return counts[i]
+            return TemplateLoader.curveShapeConnectionCount(index: game - 1)
+        }
+        if levelType.isMaze {
+            return TemplateLoader.mazeConnectionCount(index: game - 1)
         }
         // Regular polygon/circle levels: games 1–6.
         if game <= 6 {
@@ -152,10 +148,7 @@ enum LevelGenerator {
         }
         // Asymmetric line templates for games 7+.
         if levelType.isCurve {
-            let counts = [1, 2, 3, 2, 1, 4, 2, 4]
-            let n = counts.count
-            let i = ((game - 7) % n + n) % n
-            return counts[i]
+            return TemplateLoader.curveShapeConnectionCount(index: game - 7)
         } else {
             let t = asymmetricLineTemplate(forIndex: game - 7)
             return t.connections?.count ?? t.unitDots.count
@@ -169,6 +162,28 @@ enum LevelGenerator {
                               in size: CGSize,
                               dotRadius: CGFloat,
                               topReserved: CGFloat = 68) -> DotConfiguration {
+        let padding = max(dotRadius * 5, 44)
+        let usableTop    = topReserved
+        let usableHeight = size.height - topReserved
+        let cx = size.width / 2
+        let cy = usableTop + usableHeight / 2
+        let radius = min(size.width, usableHeight) / 2 - padding
+
+        // ── JSON-driven levels: shapes, curve shapes, mazes ─────
+        if levelType == .shapesGuided,
+           let cfg = TemplateLoader.lineShape(index: game - 1, cx: cx, cy: cy, radius: radius) {
+            return cfg
+        }
+        if levelType == .curveShapesGuided,
+           let cfg = TemplateLoader.curveShape(index: game - 1, cx: cx, cy: cy, radius: radius) {
+            return cfg
+        }
+        if levelType.isMaze,
+           let cfg = TemplateLoader.maze(index: game - 1, cx: cx, cy: cy, radius: radius) {
+            return cfg
+        }
+
+        // ── Code-driven levels 1-6 ──────────────────────────────
         if levelType.isCurve {
             return curveConfig(levelType: levelType, dotCount: dotCount, game: game,
                                in: size, dotRadius: dotRadius, topReserved: topReserved)

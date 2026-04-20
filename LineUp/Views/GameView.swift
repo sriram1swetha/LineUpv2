@@ -138,7 +138,6 @@ struct GameView: View {
                 }
 
                 // Faint circle outline hint for classic full-circle curve games.
-                // (Skipped for partial-arc games, which use per-connection arcs.)
                 if currentLevelType.isCurve,
                    config.perConnectionArcs == nil,
                    let center = config.circleCenter,
@@ -147,6 +146,18 @@ struct GameView: View {
                         .stroke(Color.blue.opacity(0.06), lineWidth: 1)
                         .frame(width: radius * 2, height: radius * 2)
                         .position(center)
+                }
+
+                // Maze walls — thick red/brown lines the player must avoid.
+                if let walls = config.walls {
+                    ForEach(0..<walls.count, id: \.self) { i in
+                        Path { p in
+                            p.move(to: walls[i].0)
+                            p.addLine(to: walls[i].1)
+                        }
+                        .stroke(Color(hex: "8B4513").opacity(0.85),
+                                style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    }
                 }
 
                 // Ideal highlight (appears after each scored stroke)
@@ -312,8 +323,10 @@ struct GameView: View {
                 .frame(width: dotR * 2, height: dotR * 2)
                 .overlay(Circle().stroke(Color.white.opacity(0.85), lineWidth: 1.5))
                 .scaleEffect(scale).animation(.easeInOut(duration: 0.65), value: scale)
-            Text("\(index + 1)")
-                .font(.system(size: max(dotR * 0.9, 7), weight: .bold)).foregroundStyle(.white)
+            if currentLevelType.showsDotNumbers {
+                Text("\(index + 1)")
+                    .font(.system(size: max(dotR * 0.9, 7), weight: .bold)).foregroundStyle(.white)
+            }
         }
         .position(pos)
     }
@@ -365,10 +378,18 @@ struct GameView: View {
     private var footerHint: String {
         switch phase {
         case .idle:
+            if currentLevelType.isMaze {
+                return "Navigate from green dot ● — avoid the walls!"
+            }
             return currentLevelType.isCurve
                 ? "Trace the arc from the green dot ●"
                 : "Draw from the green dot ●"
         case .drawing:
+            if currentLevelType.isMaze {
+                return settings.continuousDrawing
+                    ? "Stay clear of walls — pass through the orange dot ●"
+                    : "Stay clear of walls — release at the orange dot"
+            }
             if settings.continuousDrawing {
                 return currentLevelType.isCurve
                     ? "Follow the curve through the orange dot ●"
@@ -453,7 +474,12 @@ struct GameView: View {
 
         // ── Score ───────────────────────────────────────────────
         let scoreValue: Int
-        if currentLevelType.isCurve,
+        if let walls = config.walls, !walls.isEmpty {
+            // Maze: straightness + wall-crossing penalty.
+            scoreValue = ScoringEngine.scoreMaze(
+                path: activePath, from: startDot, to: endDot,
+                dotRadius: dotR, walls: walls)
+        } else if currentLevelType.isCurve,
            let arc = config.arcInfo(for: connectionIndex) {
             scoreValue = ScoringEngine.scoreArc(
                 path: activePath, from: startDot, to: endDot,

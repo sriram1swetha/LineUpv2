@@ -85,6 +85,51 @@ enum ScoringEngine {
         return clamp(100.0 * Foundation.exp(-5.0 * normalised))
     }
 
+    // ── Maze scoring ────────────────────────────────────────────────────
+    ///
+    /// Uses straightness scoring as the base, then subtracts a penalty
+    /// for every wall crossing detected along the drawn path.
+    /// Each crossing deducts 15 points (min 0).
+
+    static func scoreMaze(path: [CGPoint],
+                          from start: CGPoint,
+                          to end: CGPoint,
+                          dotRadius: CGFloat,
+                          walls: [(CGPoint, CGPoint)]) -> Int {
+        // Start with the normal straightness score.
+        let base = score(path: path, from: start, to: end, dotRadius: dotRadius)
+
+        // Count wall crossings: for every consecutive pair of path points,
+        // check if that segment intersects any wall segment.
+        var crossings = 0
+        for i in 0..<(path.count - 1) {
+            let p1 = path[i], p2 = path[i + 1]
+            for wall in walls {
+                if segmentsIntersect(p1, p2, wall.0, wall.1) {
+                    crossings += 1
+                }
+            }
+        }
+
+        return max(0, base - crossings * 15)
+    }
+
+    /// Returns true if segments (a1–a2) and (b1–b2) intersect.
+    static func segmentsIntersect(_ a1: CGPoint, _ a2: CGPoint,
+                                  _ b1: CGPoint, _ b2: CGPoint) -> Bool {
+        func cross(_ o: CGPoint, _ a: CGPoint, _ b: CGPoint) -> CGFloat {
+            (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+        }
+        let d1 = cross(b1, b2, a1)
+        let d2 = cross(b1, b2, a2)
+        let d3 = cross(a1, a2, b1)
+        let d4 = cross(a1, a2, b2)
+        if ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+           ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0)) { return true }
+        // Collinear / endpoint-on-segment cases — skip for simplicity
+        return false
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────
 
     private static func clamp(_ v: Double) -> Int {

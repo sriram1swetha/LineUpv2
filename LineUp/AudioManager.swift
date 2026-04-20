@@ -32,9 +32,17 @@ final class AudioManager: NSObject, ObservableObject {
     @Published private(set) var isPlaying: Bool = false
     @Published private(set) var currentTrackName: String = ""
 
+    /// Persisted preference — when false, play() is a no-op.
+    @Published var musicEnabled: Bool {
+        didSet { UserDefaults.standard.set(musicEnabled, forKey: "lu_musicEnabled")
+                 if !musicEnabled { stop() }
+        }
+    }
+
     // MARK: - Init
 
     private override init() {
+        musicEnabled = UserDefaults.standard.object(forKey: "lu_musicEnabled") as? Bool ?? false
         super.init()
         loadTracks()
     }
@@ -66,13 +74,13 @@ final class AudioManager: NSObject, ObservableObject {
     /// Called once at app launch. Starts the playlist if it isn't already
     /// running. Safe to call repeatedly.
     func startBackgroundMusic() {
+        guard musicEnabled else { return }
         guard !isPlaying else { return }
         guard !tracks.isEmpty else {
             print("AudioManager: no tracks loaded.")
             return
         }
         ensureSessionConfigured()
-        // If there's already a paused player, just resume.
         if let p = player, p.duration > 0 {
             p.play()
             isPlaying = true
@@ -83,6 +91,7 @@ final class AudioManager: NSObject, ObservableObject {
 
     /// Resume from a paused state, or start fresh if nothing is loaded.
     func play() {
+        guard musicEnabled else { return }
         if player == nil {
             startBackgroundMusic()
             return
@@ -133,7 +142,7 @@ final class AudioManager: NSObject, ObservableObject {
             p.numberOfLoops = 0      // single play; we advance manually
             p.volume = 0.7
             p.prepareToPlay()
-            // p.play()
+            p.play()
             player = p
             currentTrackName = displayName(for: track.name)
             isPlaying = true

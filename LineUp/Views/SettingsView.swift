@@ -30,7 +30,7 @@ struct SettingsView: View {
             } header: {
                 Label("Level Structure (Fixed)", systemImage: "lock.shield")
             } footer: {
-                Text("LineUp has 8 fixed level types progressing from guided lines to freehand curves and special shapes. Complete each level to unlock the next.")
+                Text("LineUp has 10 levels progressing from guided lines to curves, special shapes, and mazes. Complete each level to unlock the next.")
             }
 
             // ── Games per level ───────────────────────────────────────────
@@ -154,28 +154,33 @@ struct SettingsView: View {
 
             // ── Music ─────────────────────────────────────────────────────
             Section {
-                HStack(spacing: 12) {
-                    Image(systemName: audio.isPlaying ? "music.note" : "music.note.list")
-                        .foregroundStyle(Color(hex: "e94560"))
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Now Playing").font(.caption).foregroundStyle(.secondary)
-                        Text(audio.currentTrackName.isEmpty ? "—" : audio.currentTrackName)
-                            .font(.subheadline.bold())
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    Text(audio.isPlaying ? "Playing" : "Paused")
-                        .font(.caption2)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(
-                            (audio.isPlaying ? Color.green : Color.gray).opacity(0.15),
-                            in: Capsule()
-                        )
-                        .foregroundStyle(audio.isPlaying ? .green : .secondary)
+                Toggle(isOn: $audio.musicEnabled) {
+                    Text("Background Music")
                 }
 
-                HStack(spacing: 8) {
+                if audio.musicEnabled {
+                    HStack(spacing: 12) {
+                        Image(systemName: audio.isPlaying ? "music.note" : "music.note.list")
+                            .foregroundStyle(Color(hex: "e94560"))
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Now Playing").font(.caption).foregroundStyle(.secondary)
+                            Text(audio.currentTrackName.isEmpty ? "—" : audio.currentTrackName)
+                                .font(.subheadline.bold())
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Text(audio.isPlaying ? "Playing" : "Paused")
+                            .font(.caption2)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(
+                                (audio.isPlaying ? Color.green : Color.gray).opacity(0.15),
+                                in: Capsule()
+                            )
+                            .foregroundStyle(audio.isPlaying ? .green : .secondary)
+                    }
+
+                    HStack(spacing: 8) {
                     Button {
                         audio.previous()
                     } label: {
@@ -213,6 +218,7 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.bordered)
                 }
+                } // end if musicEnabled
             } header: {
                 Label("Music", systemImage: "speaker.wave.2.fill")
             } footer: {

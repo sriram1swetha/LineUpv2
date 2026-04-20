@@ -2,7 +2,7 @@ import Foundation
 import Combine
 import CoreGraphics
 
-// ── Level type — the 8 fixed level kinds ──────────────────────────────────────
+// ── Level type — the 10 fixed level kinds ─────────────────────────────────────
 
 enum LevelType: Int, CaseIterable, Codable {
     case linesWithGuide       = 1   // Level 1: straight lines + guide, thick
@@ -13,6 +13,8 @@ enum LevelType: Int, CaseIterable, Codable {
     case curvesNoGuide        = 6   // Level 6: arc-along-a-circle + guide, THIN
     case shapesGuided         = 7   // Level 7: special line shapes (House, Cube…)
     case curveShapesGuided    = 8   // Level 8: special curve shapes (Oval, Flower…)
+    case mazeGuided           = 9   // Level 9: mazes with numbered dots + guide
+    case mazeNoGuide          = 10  // Level 10: mazes without numbers or guide
 
     var title: String {
         switch self {
@@ -24,6 +26,8 @@ enum LevelType: Int, CaseIterable, Codable {
         case .curvesNoGuide:      return "Curves · Thin · Guided"
         case .shapesGuided:       return "Shapes · Guided"
         case .curveShapesGuided:  return "Curve Shapes · Guided"
+        case .mazeGuided:         return "Maze · Guided"
+        case .mazeNoGuide:        return "Maze · No Guide"
         }
     }
 
@@ -37,6 +41,8 @@ enum LevelType: Int, CaseIterable, Codable {
         case .curvesNoGuide:      return "Thin curve strokes — precision required"
         case .shapesGuided:       return "Houses, cubes, arrows & more"
         case .curveShapesGuided:  return "Ovals, flowers & creative curves"
+        case .mazeGuided:         return "Navigate corridors — don't touch the walls"
+        case .mazeNoGuide:        return "Maze without guides — memory & precision"
         }
     }
 
@@ -44,13 +50,11 @@ enum LevelType: Int, CaseIterable, Codable {
         self == .curvesWithGuide || self == .curvesNoGuide || self == .curveShapesGuided
     }
 
-    /// Curves always render a guide regardless of this flag — tracing a
-    /// partial arc without any reference is basically guessing. This flag
-    /// still controls whether straight-line levels get a dashed guide.
     var hasGuide: Bool {
         switch self {
         case .linesWithGuide, .linesThinWithGuide,
-             .curvesWithGuide, .shapesGuided, .curveShapesGuided:
+             .curvesWithGuide, .shapesGuided, .curveShapesGuided,
+             .mazeGuided:
             return true
         default:
             return false
@@ -62,10 +66,17 @@ enum LevelType: Int, CaseIterable, Codable {
         self == .curvesNoGuide
     }
 
-    /// Shape levels use a fixed set of templates — every game maps directly
-    /// to a template instead of the polygon/circle progression.
     var isShapeLevel: Bool {
         self == .shapesGuided || self == .curveShapesGuided
+    }
+
+    var isMaze: Bool {
+        self == .mazeGuided || self == .mazeNoGuide
+    }
+
+    /// Whether to render numbers on dots. Hidden for maze no-guide.
+    var showsDotNumbers: Bool {
+        self != .mazeNoGuide
     }
 
     var badgeColor: String {
@@ -78,10 +89,12 @@ enum LevelType: Int, CaseIterable, Codable {
         case .curvesNoGuide:      return "E91E63"  // pink
         case .shapesGuided:       return "4CAF50"  // green
         case .curveShapesGuided:  return "00BCD4"  // teal
+        case .mazeGuided:         return "795548"  // brown
+        case .mazeNoGuide:        return "607D8B"  // blue-grey
         }
     }
 
-    static let totalLevels = 8
+    static let totalLevels = 10
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────────
@@ -157,6 +170,6 @@ class GameSettings: ObservableObject {
     /// Number of dots for game index (1-based). Game 1 → 2 dots, Game 2 → 3, etc.
     func dotCount(forGame game: Int) -> Int { game + 1 }
 
-    /// All 8 level types in fixed order
+    /// All 10 level types in fixed order
     var levelTypes: [LevelType] { LevelType.allCases }
 }

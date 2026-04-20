@@ -113,6 +113,7 @@ struct GameCard: View {
     private var emoji: String {
         if levelType == .shapesGuided { return "🏠" }
         if levelType == .curveShapesGuided { return "🌸" }
+        if levelType.isMaze { return "🧩" }
         if levelType.isCurve {
             return dotCount == 2 ? "〰️" : "⭕"
         }
