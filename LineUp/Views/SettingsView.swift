@@ -2,283 +2,180 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var settings: GameSettings
-    @ObservedObject private var audio = AudioManager.shared
+    @EnvironmentObject var userSession: UserSession
+    @EnvironmentObject var scoreStore: ScoreStore
     @State private var showResetConfirm = false
+    @State private var adminPasscode = ""
+    @State private var adminError = false
+    @State private var showAdminLogin = false
 
     var body: some View {
         Form {
-
-            // ── Level Structure info ───────────────────────────────────────
-            Section {
-                ForEach(LevelType.allCases, id: \.rawValue) { lt in
-                    HStack(spacing: 12) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color(hex: lt.badgeColor).opacity(0.15))
-                                .frame(width: 36, height: 36)
-                            Text("\(lt.rawValue)")
-                                .font(.system(size: 16, weight: .black, design: .rounded))
-                                .foregroundStyle(Color(hex: lt.badgeColor))
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(lt.title).font(.subheadline.bold())
-                            Text(lt.subtitle).font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-            } header: {
-                Label("Level Structure (Fixed)", systemImage: "lock.shield")
-            } footer: {
-                Text("LineUp has 10 levels progressing from guided lines to curves, special shapes, and mazes. Complete each level to unlock the next.")
+            if userSession.isAdmin {
+                adminSections
+            } else {
+                gamerSections
             }
-
-            // ── Games per level ───────────────────────────────────────────
-            Section {
-                Stepper(value: $settings.gamesPerLevel,
-                        in: settings.minGamesPerLevel...settings.maxGamesPerLevel) {
-                    HStack {
-                        Text("Games per Level")
-                        Spacer()
-                        Text("\(settings.gamesPerLevel)").monospacedDigit().foregroundStyle(.secondary)
-                    }
-                }
-
-                Stepper(value: $settings.minGamesPerLevel,
-                        in: 1...max(1, settings.maxGamesPerLevel - 1)) {
-                    HStack {
-                        Text("Min games (admin)")
-                        Spacer()
-                        Text("\(settings.minGamesPerLevel)").monospacedDigit().foregroundStyle(.secondary)
-                    }
-                }
-
-                Stepper(value: $settings.maxGamesPerLevel,
-                        in: (settings.minGamesPerLevel + 1)...12) {
-                    HStack {
-                        Text("Max games (admin)")
-                        Spacer()
-                        Text("\(settings.maxGamesPerLevel)").monospacedDigit().foregroundStyle(.secondary)
-                    }
-                }
-            } header: {
-                Label("Games per Level", systemImage: "square.grid.2x2")
-            } footer: {
-                Text("Game 1 = 2 dots, Game 2 = 3 dots, … Game \(settings.gamesPerLevel) = \(settings.gamesPerLevel + 1) dots.")
-            }
-
-            // ── Dot size ──────────────────────────────────────────────────
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Dot diameter")
-                        Spacer()
-                        Text("Ø \(Int(settings.dotDiameter)) pt").monospacedDigit().foregroundStyle(.secondary)
-                    }
-                    Slider(value: $settings.dotDiameter, in: 12...56, step: 2)
-                }
-
-                // Preview
-                HStack(spacing: 16) {
-                    Spacer()
-                    Circle().fill(Color.blue).frame(width: settings.dotRadius * 2, height: settings.dotRadius * 2)
-                    Spacer()
-                }
-                .frame(height: CGFloat(settings.dotDiameter) + 16)
-            } header: {
-                Label("Dot Size", systemImage: "circle")
-            } footer: {
-                Text("All levels share the same dot size.")
-            }
-
-            // ── Stroke thicknesses ────────────────────────────────────────
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Thick stroke (Levels 1, 3, 5)")
-                        Spacer()
-                        Text("\(Int(settings.thickStroke)) pt").monospacedDigit().foregroundStyle(.secondary)
-                    }
-                    Slider(value: $settings.thickStroke,
-                           in: max(settings.thinStroke + 1, 2)...settings.dotDiameter, step: 1)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Thin stroke (Levels 2, 4, 6)")
-                        Spacer()
-                        Text("\(Int(settings.thinStroke)) pt").monospacedDigit().foregroundStyle(.secondary)
-                    }
-                    Slider(value: $settings.thinStroke,
-                           in: 1...max(1, settings.thickStroke - 1), step: 1)
-                }
-
-                // Preview
-                VStack(spacing: 8) {
-                    HStack {
-                        Text("Thick").font(.caption).foregroundStyle(.secondary).frame(width: 40)
-                        Capsule().fill(Color.blue)
-                            .frame(width: 120, height: CGFloat(settings.thickStroke))
-                    }
-                    HStack {
-                        Text("Thin").font(.caption).foregroundStyle(.secondary).frame(width: 40)
-                        Capsule().fill(Color.blue)
-                            .frame(width: 120, height: CGFloat(settings.thinStroke))
-                    }
-                }
-                .padding(.vertical, 4)
-            } header: {
-                Label("Stroke Thickness", systemImage: "scribble")
-            } footer: {
-                Text("Thin stroke never exceeds dot diameter.")
-            }
-
-            // ── Drawing mode ────────────────────────────────────────────
-            Section {
-                Toggle(isOn: $settings.continuousDrawing) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Continuous Drawing")
-                        Text(settings.continuousDrawing
-                             ? "Draw through dots without lifting your finger"
-                             : "Lift and re-tap for each connection")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            } header: {
-                Label("Drawing Mode", systemImage: "hand.draw")
-            } footer: {
-                Text(settings.continuousDrawing
-                     ? "Scores update instantly as you pass through each dot. Lifting before reaching the next dot discards that stroke."
-                     : "Each connection is scored when you lift your finger. You see the ideal path overlay between strokes.")
-            }
-
-            // ── Music ─────────────────────────────────────────────────────
-            Section {
-                Toggle(isOn: $audio.musicEnabled) {
-                    Text("Background Music")
-                }
-
-                if audio.musicEnabled {
-                    HStack(spacing: 12) {
-                        Image(systemName: audio.isPlaying ? "music.note" : "music.note.list")
-                            .foregroundStyle(Color(hex: "e94560"))
-                            .frame(width: 24)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Now Playing").font(.caption).foregroundStyle(.secondary)
-                            Text(audio.currentTrackName.isEmpty ? "—" : audio.currentTrackName)
-                                .font(.subheadline.bold())
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        Text(audio.isPlaying ? "Playing" : "Paused")
-                            .font(.caption2)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(
-                                (audio.isPlaying ? Color.green : Color.gray).opacity(0.15),
-                                in: Capsule()
-                            )
-                            .foregroundStyle(audio.isPlaying ? .green : .secondary)
-                    }
-
-                    HStack(spacing: 8) {
-                    Button {
-                        audio.previous()
-                    } label: {
-                        Label("Previous", systemImage: "backward.fill")
-                            .labelStyle(.iconOnly)
-                            .frame(maxWidth: .infinity).padding(.vertical, 10)
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button {
-                        if audio.isPlaying { audio.pause() } else { audio.play() }
-                    } label: {
-                        Label(audio.isPlaying ? "Pause" : "Play",
-                              systemImage: audio.isPlaying ? "pause.fill" : "play.fill")
-                            .frame(maxWidth: .infinity).padding(.vertical, 10)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color(hex: "e94560"))
-
-                    Button {
-                        audio.stop()
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                            .labelStyle(.iconOnly)
-                            .frame(maxWidth: .infinity).padding(.vertical, 10)
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button {
-                        audio.next()
-                    } label: {
-                        Label("Next", systemImage: "forward.fill")
-                            .labelStyle(.iconOnly)
-                            .frame(maxWidth: .infinity).padding(.vertical, 10)
-                    }
-                    .buttonStyle(.bordered)
-                }
-                } // end if musicEnabled
-            } header: {
-                Label("Music", systemImage: "speaker.wave.2.fill")
-            } footer: {
-                Text("Background tracks loop one after the other. Use ◀︎ ▶︎ to skip between tracks.")
-            }
-
-            // ── Data ──────────────────────────────────────────────────────
-            Section {
-                Button(role: .destructive) { showResetConfirm = true } label: {
-                    Label("Reset All Scores & Unlock Progress", systemImage: "trash")
-                }
-            } header: {
-                Label("Data", systemImage: "externaldrive")
-            }
-
-            // ── App Feedback ──────────────────────────────────────────────
-            Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(LinearGradient(
-                                    colors: [Color(hex: "e94560"), Color(hex: "533483")],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing))
-                                .frame(width: 44, height: 44)
-                            Text("S")
-                                .font(.system(size: 20, weight: .black, design: .rounded))
-                                .foregroundStyle(.white)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Sriram S.").font(.headline)
-                            Text("Developer & Designer").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    Divider()
-                    Button {
-                        if let url = URL(string: "mailto:photerrificshots@gmail.com") {
-                            UIApplication.shared.open(url)
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: "envelope.fill").foregroundStyle(Color(hex: "e94560"))
-                            Text("photerrificshots@gmail.com").font(.subheadline).foregroundStyle(.primary)
-                            Spacer()
-                            Image(systemName: "arrow.up.right").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .padding(.vertical, 4)
-            } header: {
-                Label("App Feedback", systemImage: "bubble.left.and.bubble.right")
-            } footer: {
-                Text("Tap the email to send feedback directly.")
-            }
+            feedbackSection
         }
-        .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.large)
-        .confirmationDialog("Clear all scores?", isPresented: $showResetConfirm, titleVisibility: .visible) {
-            Button("Clear All", role: .destructive) { ScoreStore.shared.clearAll() }
+        .navigationTitle("Settings").navigationBarTitleDisplayMode(.large)
+        .confirmationDialog("Reset all scores?", isPresented: $showResetConfirm, titleVisibility: .visible) {
+            Button("Reset", role: .destructive) { scoreStore.clearAll() }
             Button("Cancel", role: .cancel) {}
-        } message: { Text("This resets all scores and locks all levels. Cannot be undone.") }
+        } message: { Text("This resets all scores and progress. Cannot be undone.") }
+    }
+
+    // ── Admin sections (full access) ───────────────────────────────────────
+
+    @ViewBuilder private var adminSections: some View {
+        // Level structure (read-only info)
+        Section {
+            ForEach(LevelType.allCases, id: \.rawValue) { lt in
+                HStack(spacing: 10) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8).fill(Color(hex: lt.badgeColor).opacity(0.15)).frame(width: 34, height: 34)
+                        Text("\(lt.rawValue)").font(.system(size: 15, weight: .black, design: .rounded)).foregroundStyle(Color(hex: lt.badgeColor))
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(lt.title).font(.subheadline.bold())
+                        Text(lt.subtitle).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        } header: { Label("Level Structure", systemImage: "lock.shield") }
+        footer: { Text("6 fixed levels — lines to curves, guided to freehand.") }
+
+        // Games per level
+        Section {
+            stepper("Games per Level", value: $settings.gamesPerLevel,
+                    range: settings.minGamesPerLevel...settings.maxGamesPerLevel)
+            stepper("Min games (bound)", value: $settings.minGamesPerLevel, range: 1...max(1, settings.maxGamesPerLevel-1))
+            stepper("Max games (bound)", value: $settings.maxGamesPerLevel, range: (settings.minGamesPerLevel+1)...8)
+        } header: { Label("Games per Level", systemImage: "square.grid.2x2") }
+
+        // Undo
+        Section {
+            stepper("Max Undos per Segment", value: $settings.maxUndosPerSegment, range: 0...5)
+        } header: { Label("Undo Rules", systemImage: "arrow.uturn.backward") }
+        footer: { Text("0 = unlimited. Each segment (A→B connection) has its own undo counter.") }
+
+        // Dot & stroke
+        Section {
+            slider("Dot diameter", value: $settings.dotDiameter, in: 12...56, unit: "pt", step: 2)
+            slider("Thick stroke (Levels 1,3,5)", value: $settings.thickStroke,
+                   in: max(settings.thinStroke+1, 2)...settings.dotDiameter, unit: "pt", step: 1)
+            slider("Thin stroke (Levels 2,4,6)", value: $settings.thinStroke,
+                   in: 1...max(1, settings.thickStroke-1), unit: "pt", step: 1)
+        } header: { Label("Dot & Stroke Size", systemImage: "circle") }
+
+        // Time scoring
+        Section {
+            slider("Par seconds per segment", value: $settings.parSecondsPerConnection, in: 3...15, unit: "s", step: 1)
+        } header: { Label("Time Scoring", systemImage: "timer") }
+        footer: { Text("Par × connections = expected game time. Going over par reduces score.") }
+
+        // Admin visualizer
+        Section {
+            NavigationLink(destination: AdminVisualizerView()) {
+                Label("Dot Layout Visualizer", systemImage: "dot.scope")
+            }
+        } header: { Label("Admin Tools", systemImage: "wrench.and.screwdriver") }
+
+        // Data
+        Section {
+            Button(role: .destructive) { showResetConfirm = true } label: {
+                Label("Reset All Scores & Progress", systemImage: "trash")
+            }
+        } header: { Label("Data", systemImage: "externaldrive") }
+    }
+
+    // ── Gamer sections (minimal) ───────────────────────────────────────────
+
+    @ViewBuilder private var gamerSections: some View {
+        Section {
+            HStack {
+                Label("Name", systemImage: "person")
+                Spacer()
+                Text(userSession.displayName).foregroundStyle(.secondary)
+            }
+            HStack {
+                Label("Email", systemImage: "envelope")
+                Spacer()
+                Text(userSession.playerEmail).foregroundStyle(.secondary).font(.caption)
+            }
+        } header: { Label("Your Profile", systemImage: "person.circle") }
+
+        Section {
+            Button(role: .destructive) { showResetConfirm = true } label: {
+                Label("Reset My Scores", systemImage: "trash")
+            }
+        } header: { Label("Data", systemImage: "externaldrive") }
+
+        // Admin upgrade
+        Section {
+            if !showAdminLogin {
+                Button { showAdminLogin = true } label: {
+                    Label("Admin Login", systemImage: "shield.lefthalf.filled")
+                }
+            } else {
+                SecureField("Admin passcode", text: $adminPasscode)
+                if adminError { Text("Incorrect passcode").font(.caption).foregroundStyle(.red) }
+                Button("Confirm") {
+                    adminError = !userSession.tryAdminLogin(passcode: adminPasscode)
+                    if !adminError { showAdminLogin = false }
+                }
+            }
+        } header: { Label("Developer Access", systemImage: "lock") }
+    }
+
+    // ── App Feedback ───────────────────────────────────────────────────────
+
+    @ViewBuilder private var feedbackSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle().fill(LinearGradient(colors: [Color(hex: "e94560"), Color(hex: "533483")],
+                                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 44, height: 44)
+                        Text("S").font(.system(size: 20, weight: .black, design: .rounded)).foregroundStyle(.white)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Sriram S.").font(.headline)
+                        Text("Developer & Designer").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Divider()
+                Button {
+                    if let url = URL(string: "mailto:photerrificshots@gmail.com") { UIApplication.shared.open(url) }
+                } label: {
+                    HStack {
+                        Image(systemName: "envelope.fill").foregroundStyle(Color(hex: "e94560"))
+                        Text("photerrificshots@gmail.com").font(.subheadline).foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "arrow.up.right").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }.padding(.vertical, 4)
+        } header: { Label("App Feedback", systemImage: "bubble.left.and.bubble.right") }
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+
+    @ViewBuilder private func stepper(_ title: String, value: Binding<Int>, range: ClosedRange<Int>) -> some View {
+        Stepper(value: value, in: range) {
+            HStack { Text(title); Spacer(); Text("\(value.wrappedValue)").monospacedDigit().foregroundStyle(.secondary) }
+        }
+    }
+
+    @ViewBuilder private func slider(_ title: String, value: Binding<Double>, in range: ClosedRange<Double>, unit: String, step: Double) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text("\(Int(value.wrappedValue)) \(unit)").monospacedDigit().foregroundStyle(.secondary)
+            }
+            Slider(value: value, in: range, step: step)
+        }
     }
 }

@@ -3,7 +3,8 @@ import Combine
 
 struct LineScore: Codable {
     let connectionIndex: Int
-    let score: Int
+    let rawAccuracyScore: Int   // pure accuracy 0-100
+    let timeAdjustedScore: Int  // after time penalty
 }
 
 struct GameResult: Codable, Identifiable {
@@ -16,30 +17,35 @@ struct GameResult: Codable, Identifiable {
     let totalScore: Int
     let maxPossibleScore: Int
     let undosUsed: Int
+    let timeTaken: Double       // seconds for whole game
+    let parTime: Double         // expected par
     let date: Date
 
-    // Backward-compatible decoding
+    // Backward-compatible init
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id               = try c.decode(UUID.self,         forKey: .id)
         level            = try c.decode(Int.self,          forKey: .level)
-        levelType        = try c.decodeIfPresent(LevelType.self, forKey: .levelType) ?? .linesWithGuide
+        levelType        = (try? c.decodeIfPresent(LevelType.self, forKey: .levelType)) ?? .linesWithGuide
         game             = try c.decode(Int.self,          forKey: .game)
         shapeName        = try c.decode(String.self,       forKey: .shapeName)
         lineScores       = try c.decode([LineScore].self,  forKey: .lineScores)
         totalScore       = try c.decode(Int.self,          forKey: .totalScore)
         maxPossibleScore = try c.decode(Int.self,          forKey: .maxPossibleScore)
-        undosUsed        = try c.decodeIfPresent(Int.self, forKey: .undosUsed) ?? 0
+        undosUsed        = (try? c.decodeIfPresent(Int.self, forKey: .undosUsed)) ?? 0
+        timeTaken        = (try? c.decodeIfPresent(Double.self, forKey: .timeTaken)) ?? 0
+        parTime          = (try? c.decodeIfPresent(Double.self, forKey: .parTime)) ?? 0
         date             = try c.decode(Date.self,         forKey: .date)
     }
 
     init(id: UUID, level: Int, levelType: LevelType, game: Int, shapeName: String,
          lineScores: [LineScore], totalScore: Int, maxPossibleScore: Int,
-         undosUsed: Int, date: Date) {
+         undosUsed: Int, timeTaken: Double, parTime: Double, date: Date) {
         self.id = id; self.level = level; self.levelType = levelType
         self.game = game; self.shapeName = shapeName; self.lineScores = lineScores
         self.totalScore = totalScore; self.maxPossibleScore = maxPossibleScore
-        self.undosUsed = undosUsed; self.date = date
+        self.undosUsed = undosUsed; self.timeTaken = timeTaken
+        self.parTime = parTime; self.date = date
     }
 
     var percentage: Double {
@@ -56,13 +62,18 @@ struct GameResult: Codable, Identifiable {
         default: return "D"
         }
     }
+
+    var timeLabel: String {
+        let m = Int(timeTaken) / 60, s = Int(timeTaken) % 60
+        return m > 0 ? "\(m)m \(s)s" : "\(s)s"
+    }
 }
 
 class ScoreStore: ObservableObject {
     static let shared = ScoreStore()
 
     @Published private(set) var results: [GameResult] = []
-    private let storageKey = "lineup_v1_results"
+    private let storageKey = "lineup_v2_results"
 
     private init() { load() }
 
@@ -78,18 +89,15 @@ class ScoreStore: ObservableObject {
     }
 
     func isLevelCompleted(level: Int, gamesPerLevel: Int) -> Bool {
-        guard gamesPerLevel > 0 else { return false }
-        return (1...gamesPerLevel).allSatisfy { isGameCompleted(level: level, game: $0) }
+        (1...gamesPerLevel).allSatisfy { isGameCompleted(level: level, game: $0) }
     }
 
     func isLevelUnlocked(level: Int, gamesPerLevel: Int) -> Bool {
-        guard level > 1 else { return true }
-        return isLevelCompleted(level: level - 1, gamesPerLevel: gamesPerLevel)
+        level == 1 ? true : isLevelCompleted(level: level - 1, gamesPerLevel: gamesPerLevel)
     }
 
     func isGameUnlocked(level: Int, game: Int) -> Bool {
-        guard game > 1 else { return true }
-        return isGameCompleted(level: level, game: game - 1)
+        game == 1 ? true : isGameCompleted(level: level, game: game - 1)
     }
 
     // ── Queries ────────────────────────────────────────────────────────────
