@@ -11,7 +11,7 @@ struct GameView: View {
 
     @EnvironmentObject var settings: GameSettings
     @EnvironmentObject var scoreStore: ScoreStore
-    @EnvironmentObject var userSession: UserSession
+    @EnvironmentObject var userManager: UserSession
     @Environment(\.dismiss) private var dismiss
 
     @State private var currentLevel: Int
@@ -68,6 +68,7 @@ struct GameView: View {
     private var lineW: CGFloat { settings.lineThickness(for: currentLevelType) }
     private var totalScore: Int { lineScores.reduce(0) { $0 + $1.timeAdjustedScore } }
     private var maxScore: Int { config.connections.count * 100 }
+    private var totalTime: Double { elapsedSeconds }
     private var parTime: Double { Double(config.connections.count) * settings.parSecondsPerConnection }
 
     private var currentConn: (Int, Int)? {
@@ -125,7 +126,8 @@ struct GameView: View {
                 level: currentLevel, game: currentGame, levelType: currentLevelType,
                 shapeName: config.shapeName, lineScores: lineScores,
                 totalScore: totalScore, maxScore: maxScore,
-                undosUsed: totalUndosUsed, timeTaken: elapsedSeconds, parTime: parTime,
+                undosUsed: totalUndosUsed,
+                timeTaken: elapsedSeconds, parTime: parTime,
                 onPlayAgain: { showResult = false; restartGame() }
             )
         }
@@ -508,20 +510,13 @@ struct GameView: View {
             game: currentGame, shapeName: config.shapeName,
             lineScores: lineScores,
             totalScore: totalScore, maxPossibleScore: maxScore,
-            undosUsed: totalUndosUsed,
-            timeTaken: elapsedSeconds, parTime: parTime, date: Date()
+            totalTime: elapsedSeconds, undosUsed: totalUndosUsed, date: Date()
         )
         scoreStore.save(result: result)
-        // Submit to CloudKit if available
-        if userSession.isGamer {
-            Task {
-                await CloudKitManager.shared.submitScore(
-                    playerName: userSession.playerName,
-                    email: userSession.playerEmail,
-                    level: currentLevel, game: currentGame,
-                    score: totalScore)
-            }
-        }
+        CloudKitManager.shared.submitScore(
+            displayName: userManager.displayName,
+            level: currentLevel, game: currentGame,
+            score: totalScore, totalTime: elapsedSeconds)
         resultSaved = true
     }
 }

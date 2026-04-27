@@ -18,7 +18,6 @@ struct GameResult: Codable, Identifiable {
     let maxPossibleScore: Int
     let undosUsed: Int
     let timeTaken: Double       // seconds for whole game
-    let parTime: Double         // expected par
     let date: Date
 
     // Backward-compatible init
@@ -34,18 +33,16 @@ struct GameResult: Codable, Identifiable {
         maxPossibleScore = try c.decode(Int.self,          forKey: .maxPossibleScore)
         undosUsed        = (try? c.decodeIfPresent(Int.self, forKey: .undosUsed)) ?? 0
         timeTaken        = (try? c.decodeIfPresent(Double.self, forKey: .timeTaken)) ?? 0
-        parTime          = (try? c.decodeIfPresent(Double.self, forKey: .parTime)) ?? 0
         date             = try c.decode(Date.self,         forKey: .date)
     }
 
     init(id: UUID, level: Int, levelType: LevelType, game: Int, shapeName: String,
          lineScores: [LineScore], totalScore: Int, maxPossibleScore: Int,
-         undosUsed: Int, timeTaken: Double, parTime: Double, date: Date) {
+         totalTime: Double, undosUsed: Int, date: Date) {
         self.id = id; self.level = level; self.levelType = levelType
         self.game = game; self.shapeName = shapeName; self.lineScores = lineScores
         self.totalScore = totalScore; self.maxPossibleScore = maxPossibleScore
-        self.undosUsed = undosUsed; self.timeTaken = timeTaken
-        self.parTime = parTime; self.date = date
+        self.undosUsed = undosUsed; self.timeTaken = totalTime; self.date = date
     }
 
     var percentage: Double {
