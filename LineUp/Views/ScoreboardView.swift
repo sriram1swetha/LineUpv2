@@ -13,14 +13,16 @@ struct ScoreboardView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(LevelType.allCases, id: \.rawValue) { lt in
+                        let isSelected = selectedLevel == lt.rawValue
+                        let bgColor: Color = isSelected ? Color(hex: lt.badgeColor) : Color(.secondarySystemBackground)
+                        let fgColor: Color = isSelected ? .white : .primary
                         Button { selectedLevel = lt.rawValue } label: {
                             Text("L\(lt.rawValue)  \(lt.isCurve ? "〰️" : "—")")
                                 .font(.caption.bold())
-                                .padding(.horizontal, 14).padding(.vertical, 8)
-                                .background(selectedLevel == lt.rawValue
-                                    ? Color(hex: lt.badgeColor)
-                                    : Color(.secondarySystemBackground))
-                                .foregroundStyle(selectedLevel == lt.rawValue ? .white : .primary)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(bgColor)
+                                .foregroundStyle(fgColor)
                                 .clipShape(Capsule())
                         }
                     }
@@ -64,7 +66,7 @@ struct ScoreboardView: View {
                     }
 
                     Section("Recent plays") {
-                        ForEach(levelResults.prefix(20)) { result in
+                        ForEach(Array(levelResults.prefix(20)), id: \.id) { result in
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(result.shapeName).font(.subheadline)
