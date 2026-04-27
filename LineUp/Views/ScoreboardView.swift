@@ -7,6 +7,13 @@ struct ScoreboardView: View {
     @EnvironmentObject var scoreStore: ScoreStore
     @State private var selectedLevel = 1
 
+    private var selectedLevelType: LevelType {
+        LevelType(rawValue: selectedLevel) ?? .linesWithGuide
+    }
+    private var levelResults: [GameResult] {
+        scoreStore.results(forLevel: selectedLevel)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Level picker tabs
@@ -31,69 +38,94 @@ struct ScoreboardView: View {
             }
             .background(Color(.secondarySystemBackground))
 
-            let levelResults = scoreStore.results(forLevel: selectedLevel)
-            let lt = LevelType(rawValue: selectedLevel) ?? .linesWithGuide
-
             if levelResults.isEmpty {
                 ContentUnavailableView(
                     "No scores yet",
-                    systemImage: lt.isCurve ? "scribble.variable" : "pencil.slash",
+                    systemImage: selectedLevelType.isCurve ? "scribble.variable" : "pencil.slash",
                     description: Text("Play Level \(selectedLevel) to record a score."))
                     .frame(maxHeight: .infinity)
             } else {
-                List {
-                    Section("Best per game — Level \(selectedLevel)") {
-                        ForEach(1...settings.gamesPerLevel, id: \.self) { game in
-                            let dc = settings.dotCount(forGame: game, levelType: lt)
-                            let maxPossible = (dc == 2 ? 1 : dc) * 100
-                            let best = scoreStore.bestScore(level: selectedLevel, game: game)
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(LevelGenerator.shapeName(dotCount: dc, isCurve: lt.isCurve))
-                                        .font(.subheadline)
-                                    Text("\(dc) dots").font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if let b = best {
-                                    Text("\(b)/\(maxPossible)")
-                                        .font(.subheadline.monospacedDigit().bold())
-                                        .foregroundStyle(b * 100 / maxPossible >= 90 ? .green : .orange)
-                                } else {
-                                    Text("—").foregroundStyle(Color(.tertiaryLabel))
-                                }
-                            }
-                        }
-                    }
-
-                    Section("Recent plays") {
-                        ForEach(Array(levelResults.prefix(20)), id: \.id) { result in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(result.shapeName).font(.subheadline)
-                                    HStack(spacing: 8) {
-                                        Text(result.date, style: .relative)
-                                            .font(.caption).foregroundStyle(.secondary)
-                                        Label(String(format: "%.1fs", result.totalTime),
-                                              systemImage: "timer")
-                                            .font(.caption2).foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                VStack(alignment: .trailing, spacing: 2) {
-                                    Text("\(result.totalScore)/\(result.maxPossibleScore)")
-                                        .font(.subheadline.monospacedDigit().bold())
-                                    Text("Grade: \(result.grade)")
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                }
-                .listStyle(.insetGrouped)
+                scoreList
             }
         }
         .navigationTitle("My Scores")
         .navigationBarTitleDisplayMode(.large)
+    }
+
+    private var scoreList: some View {
+        List {
+            Section("Best per game — Level \(selectedLevel)") {
+                ForEach(1...settings.gamesPerLevel, id: \.self) { game in
+                    BestGameRow(game: game, level: selectedLevel,
+                                levelType: selectedLevelType,
+                                settings: settings, scoreStore: scoreStore)
+                }
+            }
+            Section("Recent plays") {
+                ForEach(Array(levelResults.prefix(20)), id: \.id) { result in
+                    RecentResultRow(result: result)
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+    }
+}
+
+// ── Helper row views (keeps body complexity low) ──────────────────────────────
+
+private struct BestGameRow: View {
+    let game: Int
+    let level: Int
+    let levelType: LevelType
+    let settings: GameSettings
+    let scoreStore: ScoreStore
+
+    var body: some View {
+        let dc = settings.dotCount(forGame: game, levelType: levelType)
+        let maxPossible = (dc == 2 ? 1 : dc) * 100
+        let best = scoreStore.bestScore(level: level, game: game)
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(LevelGenerator.shapeName(dotCount: dc, isCurve: levelType.isCurve))
+                    .font(.subheadline)
+                Text("\(dc) dots").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if let b = best {
+                let pct = b * 100 / maxPossible
+                Text("\(b)/\(maxPossible)")
+                    .font(.subheadline.monospacedDigit().bold())
+                    .foregroundStyle(pct >= 90 ? Color.green : Color.orange)
+            } else {
+                Text("—").foregroundStyle(Color(.tertiaryLabel))
+            }
+        }
+    }
+}
+
+private struct RecentResultRow: View {
+    let result: GameResult
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(result.shapeName).font(.subheadline)
+                HStack(spacing: 8) {
+                    Text(result.date, style: .relative)
+                        .font(.caption).foregroundStyle(.secondary)
+                    Label(String(format: "%.1fs", result.timeTaken),
+                          systemImage: "timer")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(result.totalScore)/\(result.maxPossibleScore)")
+                    .font(.subheadline.monospacedDigit().bold())
+                Text("Grade: \(result.grade)")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
