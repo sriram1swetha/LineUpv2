@@ -14,7 +14,7 @@ struct AdminVisualizerView: View {
 
     private var config: DotConfiguration {
         LevelGenerator.configuration(
-            levelType: levelType, dotCount: dotCount,
+            levelType: levelType, dotCount: dotCount, game: selectedGame,
             in: canvasSize, dotRadius: settings.dotRadius, topReserved: 0)
     }
 
@@ -29,7 +29,7 @@ struct AdminVisualizerView: View {
                     Picker("Game", selection: $selectedGame) {
                         ForEach(1...settings.gamesPerLevel, id: \.self) {
                             let dc = settings.dotCount(forGame: $0, levelType: levelType)
-                            Text(LevelGenerator.shapeName(dotCount: dc, isCurve: levelType.isCurve)).tag($0)
+                            Text(LevelGenerator.previewName(levelType: levelType, dotCount: dc, game: $0)).tag($0)
                         }
                     }
                 }

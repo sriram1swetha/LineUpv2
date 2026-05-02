@@ -43,6 +43,7 @@ struct IntroLevelView: View {
         LevelGenerator.configuration(
             levelType: levelType,
             dotCount: currentIntroGame.dotCount,
+            game: 1,
             in: canvasSize, dotRadius: dotR,
             topReserved: topReserved
         )
@@ -290,10 +291,10 @@ struct IntroLevelView: View {
                 let s = config.dots[conn.0], e = config.dots[conn.1]
                 let scoreValue: Int
                 if levelType.isCurve, let c = config.circleCenter, let r = config.circleRadius {
-                    scoreValue = ScoringEngine.scoreArcAccuracy(path: activePath, from: s, to: e,
+                    scoreValue = ScoringEngine.scoreArc(path: activePath, from: s, to: e,
                                                                 circleCenter: c, circleRadius: r, dotRadius: dotR)
                 } else {
-                    scoreValue = ScoringEngine.scoreAccuracy(path: activePath, from: s, to: e, dotRadius: dotR)
+                    scoreValue = ScoringEngine.score(path: activePath, from: s, to: e, dotRadius: dotR)
                 }
                 lineScores.append(scoreValue)
                 finishedStrokes.append(FinishedStroke(path: activePath, score: scoreValue))

@@ -60,8 +60,8 @@ struct LevelCard: View {
                     .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 if !locked {
                     HStack(spacing: 6) {
-                        tagView(levelType.isCurve ? "Curves" : "Lines",
-                                icon: levelType.isCurve ? "scribble.variable" : "minus", color: badge)
+                        tagView(levelType.isCurve ? "Curves" : levelType.isMaze ? "Maze" : levelType.isShapeLevel ? "Shapes" : "Lines",
+                                icon: levelType.isCurve ? "scribble.variable" : levelType.isMaze ? "square.grid.3x3" : levelType.isShapeLevel ? "star" : "minus", color: badge)
                         tagView(levelType.hasGuide ? "Guided" : "No Guide",
                                 icon: levelType.hasGuide ? "eye" : "eye.slash",
                                 color: levelType.hasGuide ? .green : .orange)
@@ -139,9 +139,9 @@ struct GameCard: View {
 
     private var dotCount: Int { settings.dotCount(forGame: game, levelType: levelType) }
     // Item 5: Use shape name only — no "Game N"
-    private var shapeName: String { LevelGenerator.shapeName(dotCount: dotCount, isCurve: levelType.isCurve) }
+    private var shapeName: String { LevelGenerator.previewName(levelType: levelType, dotCount: dotCount, game: game) }
     private var best: Int?  { scoreStore.bestScore(level: level, game: game) }
-    private var maxScore: Int { (dotCount == 2 ? 1 : dotCount) * 100 }
+    private var maxScore: Int { LevelGenerator.connectionCount(levelType: levelType, dotCount: dotCount, game: game) * 100 }
     private var badge: Color { Color(hex: levelType.badgeColor) }
 
     var body: some View {
@@ -160,7 +160,7 @@ struct GameCard: View {
             Divider()
 
             if locked {
-                Text("Play \(LevelGenerator.shapeName(dotCount: settings.dotCount(forGame: game-1, levelType: levelType), isCurve: levelType.isCurve)) first")
+                Text("Play \(LevelGenerator.previewName(levelType: levelType, dotCount: settings.dotCount(forGame: game-1, levelType: levelType), game: game-1)) first")
                     .font(.system(size: 9)).foregroundStyle(Color(.tertiaryLabel)).multilineTextAlignment(.center)
             } else if let b = best {
                 HStack(spacing: 4) {
@@ -179,6 +179,9 @@ struct GameCard: View {
     }
 
     private var emoji: String {
+        if levelType == .shapesGuided { return "🏠" }
+        if levelType == .curveShapesGuided { return "🌸" }
+        if levelType.isMaze { return "🧩" }
         if levelType.isCurve { return dotCount == 2 ? "〰️" : "⭕" }
         switch dotCount {
         case 2: return "➖"; case 3: return "🔺"; case 4: return "⬜"

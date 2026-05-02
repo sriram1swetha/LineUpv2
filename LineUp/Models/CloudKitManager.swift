@@ -58,23 +58,35 @@ class CloudKitManager: ObservableObject {
     private var publicDB: CKDatabase? = nil
 
     private init() {
-        setupContainer()
+        // Defer setup to avoid crashing at launch if CloudKit
+        // entitlement hasn't been added in Xcode yet.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.setupContainer()
+        }
     }
 
     // ── Safe container setup ───────────────────────────────────────────────
 
     private func setupContainer() {
-        // Wrap in a do/catch equivalent using a deferred availability check.
-        // CKContainer.default() itself never crashes, but account status
-        // checks can fail gracefully.
+        // Guard against missing CloudKit entitlement — this would otherwise
+        // crash with EXC_BREAKPOINT on CKContainer.default() at runtime.
+        guard Bundle.main.object(forInfoDictionaryKey: "com.apple.developer.icloud-container-identifiers") != nil ||
+              Bundle.main.object(forInfoDictionaryKey: "com.apple.developer.icloud-services") != nil else {
+            DispatchQueue.main.async {
+                self.isAvailable  = false
+                self.statusMessage = "CloudKit not configured — add iCloud capability in Xcode"
+            }
+            return
+        }
+
         let container = CKContainer.default()
         container.accountStatus { [weak self] status, error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 switch status {
                 case .available:
-                    self.publicDB    = container.publicCloudDatabase
-                    self.isAvailable = true
+                    self.publicDB     = container.publicCloudDatabase
+                    self.isAvailable  = true
                     self.statusMessage = "Connected to iCloud"
                 case .noAccount:
                     self.isAvailable  = false

@@ -96,6 +96,11 @@ struct MainMenuView: View {
                         NavigationLink(destination: SettingsView()) {
                             GlowButton(title: "Settings", icon: "gearshape.fill", isPrimary: false)
                         }
+                        if userSession.isAdmin {
+                            NavigationLink(destination: AdminVisualizerView()) {
+                                GlowButton(title: "Dot Visualizer", icon: "eye.circle", isPrimary: false)
+                            }
+                        }
                         Button {
                             userSession.logout()
                         } label: {
