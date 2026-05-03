@@ -30,7 +30,7 @@ struct SettingsView: View {
             } header: {
                 Label("Level Structure (Fixed)", systemImage: "lock.shield")
             } footer: {
-                Text("LineUp has 10 levels progressing from guided lines to curves, special shapes, and mazes. Complete each level to unlock the next.")
+                Text("LineUp has 7 levels progressing from lines to curves, shapes, and mazes. Complete each level to unlock the next.")
             }
 
             // ── Games per level ───────────────────────────────────────────

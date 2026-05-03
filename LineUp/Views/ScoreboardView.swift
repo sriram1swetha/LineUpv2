@@ -8,7 +8,7 @@ struct ScoreboardView: View {
     @State private var selectedLevel = 1
 
     private var selectedLevelType: LevelType {
-        LevelType(rawValue: selectedLevel) ?? .linesWithGuide
+        LevelType(rawValue: selectedLevel) ?? .linesGuided
     }
     private var levelResults: [GameResult] {
         scoreStore.results(forLevel: selectedLevel)
@@ -140,7 +140,7 @@ struct LeaderboardView: View {
     @State private var selectedGame  = 1
     @State private var isLoading     = false
 
-    private var lt: LevelType { LevelType(rawValue: selectedLevel) ?? .linesWithGuide }
+    private var lt: LevelType { LevelType(rawValue: selectedLevel) ?? .linesGuided }
 
     var body: some View {
         VStack(spacing: 0) {

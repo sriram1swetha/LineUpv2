@@ -117,7 +117,7 @@ struct IntroLevelView: View {
                 }
 
                 // Guide
-                if let conn = currentConn, phase != .complete, levelType.hasGuide {
+                if let conn = currentConn, phase != .complete {
                     guideShape(conn: conn)
                 }
 

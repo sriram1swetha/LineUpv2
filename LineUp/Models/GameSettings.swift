@@ -2,99 +2,74 @@ import Foundation
 import Combine
 import CoreGraphics
 
-// ── Level type — the 10 fixed level kinds ─────────────────────────────────────
+// ── Level type — the 7 levels ─────────────────────────────────────────────────
 
 enum LevelType: Int, CaseIterable, Codable {
-    case linesWithGuide       = 1   // Level 1: straight lines + guide, thick
-    case linesThinWithGuide   = 2   // Level 2: straight lines, thinner + guide
-    case linesNoGuide         = 3   // Level 3: straight lines, no guide, thick
-    case linesThinNoGuide     = 4   // Level 4: straight lines, thin, no guide
-    case curvesWithGuide      = 5   // Level 5: arc-along-a-circle + guide, thick
-    case curvesNoGuide        = 6   // Level 6: arc-along-a-circle + guide, THIN
-    case shapesGuided         = 7   // Level 7: special line shapes (House, Cube…)
-    case curveShapesGuided    = 8   // Level 8: special curve shapes (Oval, Flower…)
-    case mazeGuided           = 9   // Level 9: mazes with numbered dots + guide
-    case mazeNoGuide          = 10  // Level 10: mazes without numbers or guide
+    case linesGuided       = 1   // Level 1: straight lines, thick
+    case linesThin         = 2   // Level 2: straight lines, thinner
+    case curvesGuided      = 3   // Level 3: arcs along a circle, thick
+    case curvesThin        = 4   // Level 4: arcs along a circle, thin
+    case shapes            = 5   // Level 5: special line shapes (House, Cube…)
+    case curveShapes       = 6   // Level 6: special curve shapes (Oval, Flower…)
+    case maze              = 7   // Level 7: maze corridors with walls
 
     var title: String {
         switch self {
-        case .linesWithGuide:     return "Lines · Guided"
-        case .linesThinWithGuide: return "Lines · Thin · Guided"
-        case .linesNoGuide:       return "Lines · No Guide"
-        case .linesThinNoGuide:   return "Lines · Thin · No Guide"
-        case .curvesWithGuide:    return "Curves · Guided"
-        case .curvesNoGuide:      return "Curves · Thin · Guided"
-        case .shapesGuided:       return "Shapes · Guided"
-        case .curveShapesGuided:  return "Curve Shapes · Guided"
-        case .mazeGuided:         return "Maze · Guided"
-        case .mazeNoGuide:        return "Maze · No Guide"
+        case .linesGuided:    return "Lines"
+        case .linesThin:      return "Lines · Thin"
+        case .curvesGuided:   return "Curves"
+        case .curvesThin:     return "Curves · Thin"
+        case .shapes:         return "Shapes"
+        case .curveShapes:    return "Curve Shapes"
+        case .maze:           return "Maze"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .linesWithGuide:     return "Draw straight lines with helper guides"
-        case .linesThinWithGuide: return "Thinner strokes, guides still shown"
-        case .linesNoGuide:       return "No guides — trust your eye"
-        case .linesThinNoGuide:   return "Thin strokes, no guides"
-        case .curvesWithGuide:    return "Trace arcs along a circle with guides"
-        case .curvesNoGuide:      return "Thin curve strokes — precision required"
-        case .shapesGuided:       return "Houses, cubes, arrows & more"
-        case .curveShapesGuided:  return "Ovals, flowers & creative curves"
-        case .mazeGuided:         return "Navigate corridors — don't touch the walls"
-        case .mazeNoGuide:        return "Maze without guides — memory & precision"
+        case .linesGuided:    return "Draw straight lines between the dots"
+        case .linesThin:      return "Thinner strokes — more precision needed"
+        case .curvesGuided:   return "Trace arcs along a circle"
+        case .curvesThin:     return "Thin curve strokes — precision required"
+        case .shapes:         return "Houses, cubes, arrows & more"
+        case .curveShapes:    return "Ovals, flowers & creative curves"
+        case .maze:           return "Navigate corridors — don't touch the walls"
         }
     }
 
     var isCurve: Bool {
-        self == .curvesWithGuide || self == .curvesNoGuide || self == .curveShapesGuided
+        self == .curvesGuided || self == .curvesThin || self == .curveShapes
     }
 
-    var hasGuide: Bool {
-        switch self {
-        case .linesWithGuide, .linesThinWithGuide,
-             .curvesWithGuide, .shapesGuided, .curveShapesGuided,
-             .mazeGuided:
-            return true
-        default:
-            return false
-        }
-    }
+    var hasGuide: Bool { true }   // all levels now have guides
 
     var isThin: Bool {
-        self == .linesThinWithGuide || self == .linesThinNoGuide ||
-        self == .curvesNoGuide
+        self == .linesThin || self == .curvesThin
     }
 
     var isShapeLevel: Bool {
-        self == .shapesGuided || self == .curveShapesGuided
+        self == .shapes || self == .curveShapes
     }
 
     var isMaze: Bool {
-        self == .mazeGuided || self == .mazeNoGuide
+        self == .maze
     }
 
-    /// Whether to render numbers on dots. Hidden for maze no-guide.
-    var showsDotNumbers: Bool {
-        self != .mazeNoGuide
-    }
+    var showsDotNumbers: Bool { true }
 
     var badgeColor: String {
         switch self {
-        case .linesWithGuide:     return "2196F3"  // blue
-        case .linesThinWithGuide: return "03A9F4"  // light blue
-        case .linesNoGuide:       return "FF9800"  // orange
-        case .linesThinNoGuide:   return "FF5722"  // deep orange
-        case .curvesWithGuide:    return "9C27B0"  // purple
-        case .curvesNoGuide:      return "E91E63"  // pink
-        case .shapesGuided:       return "4CAF50"  // green
-        case .curveShapesGuided:  return "00BCD4"  // teal
-        case .mazeGuided:         return "795548"  // brown
-        case .mazeNoGuide:        return "607D8B"  // blue-grey
+        case .linesGuided:    return "2196F3"  // blue
+        case .linesThin:      return "03A9F4"  // light blue
+        case .curvesGuided:   return "9C27B0"  // purple
+        case .curvesThin:     return "E91E63"  // pink
+        case .shapes:         return "4CAF50"  // green
+        case .curveShapes:    return "00BCD4"  // teal
+        case .maze:           return "795548"  // brown
         }
     }
 
-    static let totalLevels = 10
+    static let totalLevels = 7
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────────

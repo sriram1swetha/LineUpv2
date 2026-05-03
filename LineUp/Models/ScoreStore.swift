@@ -25,7 +25,7 @@ struct GameResult: Codable, Identifiable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id               = try c.decode(UUID.self,         forKey: .id)
         level            = try c.decode(Int.self,          forKey: .level)
-        levelType        = (try? c.decodeIfPresent(LevelType.self, forKey: .levelType)) ?? .linesWithGuide
+        levelType        = (try? c.decodeIfPresent(LevelType.self, forKey: .levelType)) ?? .linesGuided
         game             = try c.decode(Int.self,          forKey: .game)
         shapeName        = try c.decode(String.self,       forKey: .shapeName)
         lineScores       = try c.decode([LineScore].self,  forKey: .lineScores)

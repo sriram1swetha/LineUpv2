@@ -9,7 +9,7 @@ struct AdminVisualizerView: View {
     @State private var selectedGame  = 1
     @State private var canvasSize: CGSize = CGSize(width: 320, height: 420)
 
-    private var levelType: LevelType { LevelType(rawValue: selectedLevel) ?? .linesWithGuide }
+    private var levelType: LevelType { LevelType(rawValue: selectedLevel) ?? .linesGuided }
     private var dotCount: Int { settings.dotCount(forGame: selectedGame, levelType: levelType) }
 
     private var config: DotConfiguration {

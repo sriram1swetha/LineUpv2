@@ -41,6 +41,10 @@ struct GameView: View {
     @State private var idealOpacity: Double = 0
     @State private var lastScoredConnIndex: Int? = nil
 
+    // Guide flash — briefly highlights the expected path as a solid line
+    // before fading to the dashed guide.
+    @State private var guideFlashOpacity: Double = 0
+
     init(level: Int, game: Int, levelType: LevelType) {
         self.initialLevel = level; self.initialGame = game; self.initialLevelType = levelType
         _currentLevel     = State(initialValue: level)
@@ -127,11 +131,17 @@ struct GameView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                if let conn = currentConn {
+                // Always show a second line so header height never changes.
+                if phase == .complete {
+                    Text("All connections drawn")
+                        .font(.caption).foregroundStyle(.green)
+                } else if let conn = currentConn {
                     Text(currentLevelType.isCurve
                          ? "Trace arc: dot \(conn.0+1) → dot \(conn.1+1)"
                          : "Draw: dot \(conn.0+1) → dot \(conn.1+1)")
                         .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text(" ").font(.caption) // placeholder to hold height
                 }
             }
             Spacer()
@@ -154,12 +164,14 @@ struct GameView: View {
             ZStack(alignment: .top) {
                 Color(.systemBackground)
 
-                // Guide (straight or arc). Curves ALWAYS show the dashed
-                // guide — tracing a partial arc freehand without any visual
-                // reference is essentially guesswork. Straight-line levels
-                // follow the per-level `hasGuide` flag.
-                if let conn = currentConn, phase != .complete,
-                   (currentLevelType.hasGuide || currentLevelType.isCurve) {
+                // Guide (straight or arc) — always shown for every level.
+                if let conn = currentConn, phase != .complete {
+                    // Solid "preview flash" — briefly highlights the expected
+                    // path so the gamer sees exactly what to draw.
+                    idealHighlight(connectionIndex: connectionIndex)
+                        .opacity(guideFlashOpacity)
+
+                    // Permanent dashed guide line
                     guideShape(conn: conn)
                 }
 
@@ -224,7 +236,10 @@ struct GameView: View {
             }
             .contentShape(Rectangle())
             .gesture(drawGesture)
-            .onAppear { canvasSize = geo.size }
+            .onAppear {
+                canvasSize = geo.size
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { flashGuide() }
+            }
             .onChange(of: geo.size) { canvasSize = $0 }
         }
     }
@@ -236,14 +251,12 @@ struct GameView: View {
         let a = config.dots[conn.0], b = config.dots[conn.1]
         if currentLevelType.isCurve,
            let arc = config.arcInfo(for: connectionIndex) {
-            // Dashed arc guide
             ArcPath(center: arc.center, radius: arc.radius, from: a, to: b)
-                .stroke(Color.blue.opacity(0.18),
+                .stroke(Color.blue.opacity(0.25),
                         style: StrokeStyle(lineWidth: 1.5, dash: [8, 6]))
         } else {
-            // Dashed straight line guide
             Path { p in p.move(to: a); p.addLine(to: b) }
-                .stroke(Color.blue.opacity(0.12),
+                .stroke(Color.blue.opacity(0.20),
                         style: StrokeStyle(lineWidth: 1.5, dash: [8, 6]))
         }
     }
@@ -550,6 +563,7 @@ struct GameView: View {
                 if !resultSaved { saveResult() }
             } else {
                 connectionIndex = nextIdx; undosThisSegment = 0; segmentStartTime = Date()
+                flashGuide()
                 let nextConn = config.connections[nextIdx]
                 if nextConn.0 == conn.1 {
                     // Chained — next connection starts where this one ended.
@@ -581,6 +595,7 @@ struct GameView: View {
                 } else {
                     connectionIndex = nextIdx; undosThisSegment = 0
                     segmentStartTime = Date(); phase = .idle
+                    flashGuide()
                 }
             }
         }
@@ -597,6 +612,7 @@ struct GameView: View {
         phase = .idle
         resultSaved = false
         showIdeal = false; idealOpacity = 0; flashScore = nil
+        flashGuide()
     }
 
     private func performRedo() {
@@ -663,6 +679,15 @@ struct GameView: View {
         }
     }
 
+    /// Briefly flash the expected path as a solid bright line, then fade out
+    /// so only the dashed guide remains.
+    private func flashGuide() {
+        guideFlashOpacity = 0.9
+        withAnimation(.easeOut(duration: 0.8).delay(0.5)) {
+            guideFlashOpacity = 0
+        }
+    }
+
     private func restartGame() {
         phase = .idle; connectionIndex = 0; activePath = []
         finishedStrokes = []; lineScores = []; flashScore = nil
@@ -670,6 +695,8 @@ struct GameView: View {
         undosThisSegment = 0
         showIdeal = false; idealOpacity = 0; lastScoredConnIndex = nil
         gameStartTime = nil; segmentStartTime = nil; elapsedSeconds = 0
+        guideFlashOpacity = 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { flashGuide() }
     }
 
     private func saveResult() {

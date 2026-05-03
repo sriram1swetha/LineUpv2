@@ -12,10 +12,10 @@ struct IntroGame {
 }
 
 let introGames: [IntroGame] = [
-    IntroGame(levelType: .linesWithGuide,  dotCount: 2),   // Segment + guide
-    IntroGame(levelType: .linesWithGuide,  dotCount: 3),   // Triangle + guide
-    IntroGame(levelType: .curvesWithGuide, dotCount: 2),   // Arc + guide
-    IntroGame(levelType: .curvesNoGuide,   dotCount: 2),   // Arc, no guide
+    IntroGame(levelType: .linesGuided,  dotCount: 2),   // Segment
+    IntroGame(levelType: .linesGuided,  dotCount: 3),   // Triangle
+    IntroGame(levelType: .curvesGuided, dotCount: 2),   // Arc
+    IntroGame(levelType: .curvesGuided, dotCount: 3),   // 3-point curve
 ]
 
 // ── Data types ─────────────────────────────────────────────────────────────────
@@ -129,10 +129,10 @@ enum LevelGenerator {
     ///  - Games 7+ use the asymmetric / partial-arc template names.
     static func previewName(levelType: LevelType, dotCount: Int, game: Int) -> String {
         // JSON-driven levels: use TemplateLoader for names.
-        if levelType == .shapesGuided {
+        if levelType == .shapes {
             return TemplateLoader.lineShapeName(index: game - 1)
         }
-        if levelType == .curveShapesGuided {
+        if levelType == .curveShapes {
             return TemplateLoader.curveShapeName(index: game - 1)
         }
         if levelType.isMaze {
@@ -156,10 +156,10 @@ enum LevelGenerator {
     /// Number of connections (edges) for a given level type and game index.
     static func connectionCount(levelType: LevelType, dotCount: Int, game: Int) -> Int {
         // JSON-driven levels.
-        if levelType == .shapesGuided {
+        if levelType == .shapes {
             return TemplateLoader.lineShapeConnectionCount(index: game - 1)
         }
-        if levelType == .curveShapesGuided {
+        if levelType == .curveShapes {
             return TemplateLoader.curveShapeConnectionCount(index: game - 1)
         }
         if levelType.isMaze {
@@ -193,11 +193,11 @@ enum LevelGenerator {
         let radius = min(size.width, usableHeight) / 2 - padding
 
         // ── JSON-driven levels: shapes, curve shapes, mazes ─────
-        if levelType == .shapesGuided,
+        if levelType == .shapes,
            let cfg = TemplateLoader.lineShape(index: game - 1, cx: cx, cy: cy, radius: radius) {
             return cfg
         }
-        if levelType == .curveShapesGuided,
+        if levelType == .curveShapes,
            let cfg = TemplateLoader.curveShape(index: game - 1, cx: cx, cy: cy, radius: radius) {
             return cfg
         }
@@ -235,7 +235,7 @@ enum LevelGenerator {
         // Regular line levels only use them for games 7+.
         let useTemplate: Bool
         let templateIndex: Int
-        if levelType == .shapesGuided {
+        if levelType == .shapes {
             useTemplate = true
             templateIndex = game - 1      // game 1 = template[0]
         } else if game > 6 {
@@ -464,7 +464,7 @@ enum LevelGenerator {
         // Regular curve levels only use them for games 7+.
         let useTemplate: Bool
         let templateIndex: Int
-        if levelType == .curveShapesGuided {
+        if levelType == .curveShapes {
             useTemplate = true
             templateIndex = game - 1      // game 1 = template[0]
         } else if game > 6 {
