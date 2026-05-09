@@ -2,11 +2,68 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var settings: GameSettings
+    @EnvironmentObject var userSession: UserSession
     @ObservedObject private var audio = AudioManager.shared
     @State private var showResetConfirm = false
+    @State private var showLogoutConfirm = false
 
     var body: some View {
         Form {
+
+            // ── Profile ──────────────────────────────────────────────────
+            Section {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle().fill(Color(hex: "e94560").opacity(0.15))
+                            .frame(width: 48, height: 48)
+                        Text(String(userSession.playerName.prefix(1)).uppercased())
+                            .font(.title2.bold())
+                            .foregroundStyle(Color(hex: "e94560"))
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(userSession.displayName).font(.headline)
+                        HStack(spacing: 4) {
+                            Text(userSession.playerEmail).font(.caption).foregroundStyle(.secondary)
+                            if userSession.emailVerified {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .font(.caption2).foregroundStyle(.green)
+                            }
+                        }
+                        Text(userSession.role == .admin ? "Admin" : "Gamer")
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 8).padding(.vertical, 2)
+                            .background(userSession.isAdmin ? Color.orange.opacity(0.15) : Color.blue.opacity(0.15))
+                            .foregroundStyle(userSession.isAdmin ? .orange : .blue)
+                            .clipShape(Capsule())
+                    }
+                }
+
+                if userSession.profileSyncedToCloud {
+                    Label("Synced to iCloud", systemImage: "checkmark.icloud.fill")
+                        .font(.caption).foregroundStyle(.green)
+                } else {
+                    Button {
+                        userSession.syncProfileToCloud()
+                    } label: {
+                        Label("Sync to iCloud", systemImage: "arrow.triangle.2.circlepath.icloud")
+                            .font(.caption)
+                    }
+                }
+
+                Button(role: .destructive) {
+                    showLogoutConfirm = true
+                } label: {
+                    Label("Log Out", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+                .confirmationDialog("Log out?", isPresented: $showLogoutConfirm) {
+                    Button("Log Out", role: .destructive) { userSession.logout() }
+                    Button("Cancel", role: .cancel) { }
+                } message: {
+                    Text("You'll return to the intro level. Your local scores are kept.")
+                }
+            } header: {
+                Label("Profile", systemImage: "person.circle")
+            }
 
             // ── Level Structure info ───────────────────────────────────────
             Section {

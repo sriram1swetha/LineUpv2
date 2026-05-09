@@ -2,28 +2,6 @@ import Foundation
 import CloudKit
 import Combine
 
-// ── CloudKit setup instructions (do this BEFORE testing) ──────────────────────
-//
-// Step 1 — Enable iCloud capability in Xcode:
-//   Project navigator → LineUp target → Signing & Capabilities
-//   → "+ Capability" → iCloud
-//   → Check "CloudKit"
-//   → Under "Containers" click "+" to create a new container
-//      (Xcode will name it iCloud.com.yourname.LineUp automatically)
-//
-// Step 2 — Create record types in CloudKit Dashboard:
-//   https://icloud.developer.apple.com
-//   → Select your container → Schema → Record Types → New Type
-//   Create "PlayerScore" with fields:
-//     displayName (String), level (Int64), game (Int64),
-//     score (Int64), totalTime (Double), date (Date/Time)
-//   Create "WeeklyLevel" with fields:
-//     weekNumber (Int64), configJSON (String),
-//     publishedAt (Date/Time), isActive (Int64)
-//
-// Until Step 1 is done, all CloudKit calls are safely skipped.
-// The app will never crash — it degrades gracefully to local-only mode.
-
 // ── Value types ────────────────────────────────────────────────────────────────
 
 struct LeaderboardEntry: Identifiable {
@@ -34,6 +12,7 @@ struct LeaderboardEntry: Identifiable {
     let score: Int
     let totalTime: Double
     let date: Date
+    let weekOf: String
 }
 
 struct WeeklyLevelConfig: Identifiable {
@@ -53,74 +32,136 @@ class CloudKitManager: ObservableObject {
     @Published var statusMessage = "Checking iCloud…"
     @Published var weeklyLevel: WeeklyLevelConfig? = nil
 
-    // Uses CKContainer.default() — reads from your app's entitlements,
-    // never hard-codes a container ID that might not exist yet.
-    private var publicDB: CKDatabase? = nil
+    private var publicDB: CKDatabase?
+    private var privateDB: CKDatabase?
+    private var profileRecordID: CKRecord.ID?   // cached after first save/fetch
 
     private init() {
-        // Defer setup to avoid crashing at launch if CloudKit
-        // entitlement hasn't been added in Xcode yet.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.setupContainer()
         }
     }
 
-    // ── Safe container setup ───────────────────────────────────────────────
+    // MARK: - Container setup
 
     private func setupContainer() {
-        // Guard against missing CloudKit entitlement — this would otherwise
-        // crash with EXC_BREAKPOINT on CKContainer.default() at runtime.
         guard Bundle.main.object(forInfoDictionaryKey: "com.apple.developer.icloud-container-identifiers") != nil ||
               Bundle.main.object(forInfoDictionaryKey: "com.apple.developer.icloud-services") != nil else {
             DispatchQueue.main.async {
-                self.isAvailable  = false
+                self.isAvailable   = false
                 self.statusMessage = "CloudKit not configured — add iCloud capability in Xcode"
             }
             return
         }
 
         let container = CKContainer.default()
-        container.accountStatus { [weak self] status, error in
+        container.accountStatus { [weak self] status, _ in
             DispatchQueue.main.async {
                 guard let self else { return }
                 switch status {
                 case .available:
-                    self.publicDB     = container.publicCloudDatabase
-                    self.isAvailable  = true
+                    self.publicDB      = container.publicCloudDatabase
+                    self.privateDB     = container.privateCloudDatabase
+                    self.isAvailable   = true
                     self.statusMessage = "Connected to iCloud"
                 case .noAccount:
-                    self.isAvailable  = false
-                    self.statusMessage = "Sign in to iCloud in Settings to use the leaderboard"
+                    self.isAvailable   = false
+                    self.statusMessage = "Sign in to iCloud in Settings to use online features"
                 case .restricted:
-                    self.isAvailable  = false
+                    self.isAvailable   = false
                     self.statusMessage = "iCloud access is restricted on this device"
-                case .couldNotDetermine:
-                    self.isAvailable  = false
-                    self.statusMessage = "Could not determine iCloud status"
                 case .temporarilyUnavailable:
-                    self.isAvailable  = false
+                    self.isAvailable   = false
                     self.statusMessage = "iCloud temporarily unavailable — try again later"
-                @unknown default:
-                    self.isAvailable  = false
+                default:
+                    self.isAvailable   = false
                     self.statusMessage = "iCloud unavailable"
                 }
             }
         }
     }
 
-    // ── Submit score ───────────────────────────────────────────────────────
+    // MARK: - Player Profile (private database)
+
+    /// Save or update the player's profile in the private database.
+    /// Uses a deterministic record ID so updates overwrite the previous record.
+    func saveProfile(displayName: String, email: String,
+                     emailVerified: Bool,
+                     completion: @escaping (Bool) -> Void = { _ in }) {
+        guard isAvailable, let db = privateDB else {
+            completion(false); return
+        }
+
+        let recordID = CKRecord.ID(recordName: "PlayerProfile_v1")
+        self.profileRecordID = recordID
+
+        // Fetch-then-update to avoid "server record changed" errors.
+        db.fetch(withRecordID: recordID) { existing, _ in
+            let record = existing ?? CKRecord(recordType: "PlayerProfile", recordID: recordID)
+            record["displayName"]   = displayName    as CKRecordValue
+            record["email"]         = email          as CKRecordValue
+            record["emailVerified"] = (emailVerified ? 1 : 0) as CKRecordValue
+            if existing == nil {
+                record["createdAt"] = Date() as CKRecordValue
+            }
+
+            db.save(record) { _, error in
+                DispatchQueue.main.async {
+                    if let error {
+                        print("CloudKit saveProfile error: \(error.localizedDescription)")
+                        completion(false)
+                    } else {
+                        completion(true)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Fetch the player's profile from the private database (e.g. on launch
+    /// to restore state across devices).
+    func fetchProfile(completion: @escaping (String?, String?, Bool?) -> Void) {
+        guard isAvailable, let db = privateDB else {
+            completion(nil, nil, nil); return
+        }
+
+        let recordID = CKRecord.ID(recordName: "PlayerProfile_v1")
+        db.fetch(withRecordID: recordID) { record, error in
+            DispatchQueue.main.async {
+                if let record {
+                    let name     = record["displayName"]   as? String
+                    let email    = record["email"]          as? String
+                    let verified = (record["emailVerified"] as? Int) == 1
+                    completion(name, email, verified)
+                } else {
+                    completion(nil, nil, nil)
+                }
+            }
+        }
+    }
+
+    // MARK: - Score submission (public database)
+
+    /// Current ISO week string, e.g. "2026-W19".
+    static var currentWeekOf: String {
+        let cal  = Calendar(identifier: .iso8601)
+        let comp = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+        return String(format: "%04d-W%02d",
+                      comp.yearForWeekOfYear ?? 2026,
+                      comp.weekOfYear ?? 1)
+    }
 
     func submitScore(displayName: String, level: Int, game: Int,
                      score: Int, totalTime: Double) {
         guard isAvailable, let db = publicDB else { return }
 
         let record = CKRecord(recordType: "PlayerScore")
-        record["displayName"] = displayName as CKRecordValue
-        record["level"]       = level       as CKRecordValue
-        record["game"]        = game        as CKRecordValue
-        record["score"]       = score       as CKRecordValue
-        record["totalTime"]   = totalTime   as CKRecordValue
-        record["date"]        = Date()      as CKRecordValue
+        record["displayName"] = displayName                  as CKRecordValue
+        record["level"]       = level                        as CKRecordValue
+        record["game"]        = game                         as CKRecordValue
+        record["score"]       = score                        as CKRecordValue
+        record["totalTime"]   = totalTime                    as CKRecordValue
+        record["weekOf"]      = CloudKitManager.currentWeekOf as CKRecordValue
 
         db.save(record) { _, error in
             if let error {
@@ -129,13 +170,22 @@ class CloudKitManager: ObservableObject {
         }
     }
 
-    // ── Fetch leaderboard ──────────────────────────────────────────────────
+    // MARK: - Leaderboard (public database)
 
-    func fetchLeaderboard(level: Int, game: Int, limit: Int = 20) {
+    /// Fetch top scores for a specific level + game, optionally filtered by week.
+    func fetchLeaderboard(level: Int, game: Int,
+                          weekOf: String? = nil, limit: Int = 20) {
         guard isAvailable, let db = publicDB else { return }
 
-        let predicate = NSPredicate(format: "level == %d AND game == %d", level, game)
-        let query     = CKQuery(recordType: "PlayerScore", predicate: predicate)
+        let predicate: NSPredicate
+        if let week = weekOf {
+            predicate = NSPredicate(format: "level == %d AND game == %d AND weekOf == %@",
+                                   level, game, week)
+        } else {
+            predicate = NSPredicate(format: "level == %d AND game == %d", level, game)
+        }
+
+        let query = CKQuery(recordType: "PlayerScore", predicate: predicate)
         query.sortDescriptors = [NSSortDescriptor(key: "score", ascending: false)]
 
         let operation        = CKQueryOperation(query: query)
@@ -143,17 +193,18 @@ class CloudKitManager: ObservableObject {
         var entries: [LeaderboardEntry] = []
 
         operation.recordMatchedBlock = { _, result in
-            if case .success(let record) = result,
-               let name  = record["displayName"] as? String,
-               let level = record["level"]        as? Int,
-               let game  = record["game"]         as? Int,
-               let score = record["score"]        as? Int,
-               let time  = record["totalTime"]    as? Double,
-               let date  = record["date"]         as? Date {
+            if case .success(let r) = result,
+               let name  = r["displayName"] as? String,
+               let lv    = r["level"]       as? Int,
+               let gm    = r["game"]        as? Int,
+               let sc    = r["score"]       as? Int {
+                let time = r["totalTime"]   as? Double ?? 0
+                let week = r["weekOf"]      as? String ?? ""
                 entries.append(LeaderboardEntry(
-                    id: record.recordID.recordName,
-                    displayName: name, level: level, game: game,
-                    score: score, totalTime: time, date: date))
+                    id: r.recordID.recordName,
+                    displayName: name, level: lv, game: gm,
+                    score: sc, totalTime: time,
+                    date: r.creationDate ?? Date(), weekOf: week))
             }
         }
 
@@ -171,7 +222,7 @@ class CloudKitManager: ObservableObject {
         db.add(operation)
     }
 
-    // ── Fetch current weekly level ─────────────────────────────────────────
+    // MARK: - Weekly level (public database)
 
     func fetchWeeklyLevel() {
         guard isAvailable, let db = publicDB else { return }
@@ -184,13 +235,13 @@ class CloudKitManager: ObservableObject {
         operation.resultsLimit = 1
 
         operation.recordMatchedBlock = { [weak self] _, result in
-            if case .success(let record) = result,
-               let week = record["weekNumber"]  as? Int,
-               let json = record["configJSON"]  as? String,
-               let date = record["publishedAt"] as? Date {
+            if case .success(let r) = result,
+               let week = r["weekNumber"]  as? Int,
+               let json = r["configJSON"]  as? String,
+               let date = r["publishedAt"] as? Date {
                 DispatchQueue.main.async {
                     self?.weeklyLevel = WeeklyLevelConfig(
-                        id: record.recordID.recordName,
+                        id: r.recordID.recordName,
                         weekNumber: week, configJSON: json, publishedAt: date)
                 }
             }
@@ -205,12 +256,13 @@ class CloudKitManager: ObservableObject {
         db.add(operation)
     }
 
-    // ── Retry connection ───────────────────────────────────────────────────
+    // MARK: - Retry
 
     func retryConnection() {
-        isAvailable    = false
-        statusMessage  = "Reconnecting…"
-        publicDB       = nil
+        isAvailable   = false
+        statusMessage = "Reconnecting…"
+        publicDB      = nil
+        privateDB     = nil
         setupContainer()
     }
 }

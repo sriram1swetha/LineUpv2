@@ -139,6 +139,7 @@ struct LeaderboardView: View {
     @State private var selectedLevel = 1
     @State private var selectedGame  = 1
     @State private var isLoading     = false
+    @State private var showThisWeek  = true
 
     private var lt: LevelType { LevelType(rawValue: selectedLevel) ?? .linesGuided }
 
@@ -186,6 +187,15 @@ struct LeaderboardView: View {
             }
             .padding(.horizontal).padding(.vertical, 8)
             .background(Color(.secondarySystemBackground))
+
+            // Week toggle
+            Picker("Period", selection: $showThisWeek) {
+                Text("This Week").tag(true)
+                Text("All Time").tag(false)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal).padding(.vertical, 6)
+            .onChange(of: showThisWeek) { _ in refresh() }
 
             // Content
             if !ck.isAvailable {
@@ -242,9 +252,8 @@ struct LeaderboardView: View {
     private func refresh() {
         guard ck.isAvailable else { return }
         isLoading = true
-        ck.fetchLeaderboard(level: selectedLevel, game: selectedGame)
-        // fetchLeaderboard updates ck.leaderboard async via CKQueryOperation callbacks
-        // Use a short delay to clear the spinner after the operation has had time to run
+        let week = showThisWeek ? CloudKitManager.currentWeekOf : nil
+        ck.fetchLeaderboard(level: selectedLevel, game: selectedGame, weekOf: week)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             isLoading = false
         }
