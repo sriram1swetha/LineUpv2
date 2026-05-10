@@ -78,11 +78,6 @@ struct MainMenuView: View {
 
                 // Buttons
                 VStack(spacing: 14) {
-                    // Intro (always visible)
-                    NavigationLink(destination: IntroLevelView()) {
-                        GlowButton(title: "Try Intro", icon: "play.circle", isPrimary: false)
-                    }
-
                     if userSession.isGamer {
                         NavigationLink(destination: LevelSelectView()) {
                             GlowButton(title: "Play", icon: "play.fill", isPrimary: true)
@@ -107,8 +102,12 @@ struct MainMenuView: View {
                             GlowButton(title: "Sign Out", icon: "rectangle.portrait.and.arrow.right", isPrimary: false)
                         }
                     } else {
+                        // Guest: can play Level 1 as intro
+                        NavigationLink(destination: LevelSelectView(guestIntroOnly: true)) {
+                            GlowButton(title: "Play Level 1", icon: "play.fill", isPrimary: true)
+                        }
                         Button { userSession.hasCompletedIntro = true } label: {
-                            GlowButton(title: "Register to Play All Levels", icon: "person.badge.plus", isPrimary: true)
+                            GlowButton(title: "Register to Play All Levels", icon: "person.badge.plus", isPrimary: false)
                         }
                     }
                 }

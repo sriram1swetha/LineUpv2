@@ -6,6 +6,7 @@ import Combine
 
 struct LeaderboardEntry: Identifiable {
     let id: String
+    let playerID: String
     let displayName: String
     let level: Int
     let game: Int
@@ -31,6 +32,8 @@ class CloudKitManager: ObservableObject {
     @Published var isAvailable = false
     @Published var statusMessage = "Checking iCloud…"
     @Published var weeklyLevel: WeeklyLevelConfig? = nil
+    @Published var lastError: String? = nil      // visible to UI for debugging
+    @Published var lastSubmitStatus: String? = nil
 
     private var publicDB: CKDatabase?
     private var privateDB: CKDatabase?
@@ -45,19 +48,15 @@ class CloudKitManager: ObservableObject {
     // MARK: - Container setup
 
     private func setupContainer() {
-        guard Bundle.main.object(forInfoDictionaryKey: "com.apple.developer.icloud-container-identifiers") != nil ||
-              Bundle.main.object(forInfoDictionaryKey: "com.apple.developer.icloud-services") != nil else {
-            DispatchQueue.main.async {
-                self.isAvailable   = false
-                self.statusMessage = "CloudKit not configured — add iCloud capability in Xcode"
-            }
-            return
-        }
-
         let container = CKContainer.default()
-        container.accountStatus { [weak self] status, _ in
+        container.accountStatus { [weak self] status, error in
             DispatchQueue.main.async {
                 guard let self else { return }
+                if let error {
+                    self.isAvailable   = false
+                    self.statusMessage = "iCloud error: \(error.localizedDescription)"
+                    return
+                }
                 switch status {
                 case .available:
                     self.publicDB      = container.publicCloudDatabase
@@ -105,12 +104,14 @@ class CloudKitManager: ObservableObject {
                 record["createdAt"] = Date() as CKRecordValue
             }
 
-            db.save(record) { _, error in
+            db.save(record) { [weak self] _, error in
                 DispatchQueue.main.async {
                     if let error {
-                        print("CloudKit saveProfile error: \(error.localizedDescription)")
+                        self?.lastError = "saveProfile: \(error.localizedDescription)"
+                        print("CloudKit saveProfile error: \(error)")
                         completion(false)
                     } else {
+                        self?.lastError = nil
                         completion(true)
                     }
                 }
@@ -151,11 +152,23 @@ class CloudKitManager: ObservableObject {
                       comp.weekOfYear ?? 1)
     }
 
-    func submitScore(displayName: String, level: Int, game: Int,
+    func submitScore(playerID: String, displayName: String, level: Int, game: Int,
                      score: Int, totalTime: Double) {
-        guard isAvailable, let db = publicDB else { return }
+        guard isAvailable, let db = publicDB else {
+            DispatchQueue.main.async {
+                self.lastError = "CloudKit not available (isAvailable=\(self.isAvailable), db=\(self.publicDB != nil))"
+                self.lastSubmitStatus = "Failed: not available"
+            }
+            return
+        }
+
+        DispatchQueue.main.async {
+            self.lastSubmitStatus = "Submitting…"
+            self.lastError = nil
+        }
 
         let record = CKRecord(recordType: "PlayerScore")
+        record["playerID"]    = playerID                     as CKRecordValue
         record["displayName"] = displayName                  as CKRecordValue
         record["level"]       = level                        as CKRecordValue
         record["game"]        = game                         as CKRecordValue
@@ -163,9 +176,17 @@ class CloudKitManager: ObservableObject {
         record["totalTime"]   = totalTime                    as CKRecordValue
         record["weekOf"]      = CloudKitManager.currentWeekOf as CKRecordValue
 
-        db.save(record) { _, error in
-            if let error {
-                print("CloudKit submitScore error: \(error.localizedDescription)")
+        db.save(record) { [weak self] savedRecord, error in
+            DispatchQueue.main.async {
+                if let error {
+                    self?.lastError = "submitScore: \(error.localizedDescription)"
+                    self?.lastSubmitStatus = "Failed"
+                    print("CloudKit submitScore error: \(error)")
+                } else {
+                    self?.lastSubmitStatus = "Submitted ✓ (ID: \(savedRecord?.recordID.recordName ?? "?"))"
+                    self?.lastError = nil
+                    print("CloudKit submitScore success: \(savedRecord?.recordID.recordName ?? "")")
+                }
             }
         }
     }
@@ -173,17 +194,23 @@ class CloudKitManager: ObservableObject {
     // MARK: - Leaderboard (public database)
 
     /// Fetch top scores for a specific level + game, optionally filtered by week.
-    func fetchLeaderboard(level: Int, game: Int,
+    func fetchLeaderboard(level: Int, game: Int? = nil,
                           weekOf: String? = nil, limit: Int = 20) {
         guard isAvailable, let db = publicDB else { return }
 
-        let predicate: NSPredicate
-        if let week = weekOf {
-            predicate = NSPredicate(format: "level == %d AND game == %d AND weekOf == %@",
-                                   level, game, week)
-        } else {
-            predicate = NSPredicate(format: "level == %d AND game == %d", level, game)
+        var formatParts: [String] = ["level == %d"]
+        var args: [Any] = [level]
+        if let g = game {
+            formatParts.append("game == %d")
+            args.append(g)
         }
+        if let week = weekOf {
+            formatParts.append("weekOf == %@")
+            args.append(week)
+        }
+
+        let predicate = NSPredicate(format: formatParts.joined(separator: " AND "),
+                                    argumentArray: args)
 
         let query = CKQuery(recordType: "PlayerScore", predicate: predicate)
         query.sortDescriptors = [NSSortDescriptor(key: "score", ascending: false)]
@@ -198,10 +225,12 @@ class CloudKitManager: ObservableObject {
                let lv    = r["level"]       as? Int,
                let gm    = r["game"]        as? Int,
                let sc    = r["score"]       as? Int {
+                let pid  = r["playerID"]    as? String ?? ""
                 let time = r["totalTime"]   as? Double ?? 0
                 let week = r["weekOf"]      as? String ?? ""
                 entries.append(LeaderboardEntry(
                     id: r.recordID.recordName,
+                    playerID: pid,
                     displayName: name, level: lv, game: gm,
                     score: sc, totalTime: time,
                     date: r.creationDate ?? Date(), weekOf: week))
@@ -213,8 +242,10 @@ class CloudKitManager: ObservableObject {
                 switch result {
                 case .success:
                     self?.leaderboard = entries
+                    self?.lastError = entries.isEmpty ? "Leaderboard query OK — 0 results" : nil
                 case .failure(let error):
-                    print("CloudKit fetchLeaderboard error: \(error.localizedDescription)")
+                    self?.lastError = "fetchLeaderboard: \(error.localizedDescription)"
+                    print("CloudKit fetchLeaderboard error: \(error)")
                 }
             }
         }

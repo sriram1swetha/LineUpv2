@@ -5,11 +5,17 @@ import SwiftUI
 struct LevelSelectView: View {
     @EnvironmentObject var settings: GameSettings
     @EnvironmentObject var scoreStore: ScoreStore
+    @EnvironmentObject var userSession: UserSession
+    var guestIntroOnly = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                ForEach(LevelType.allCases, id: \.rawValue) { lt in
+                let levels = guestIntroOnly
+                    ? LevelType.allCases.filter { $0.rawValue == 1 }
+                    : LevelType.allCases
+
+                ForEach(levels, id: \.rawValue) { lt in
                     let level = lt.rawValue
                     let unlocked = scoreStore.isLevelUnlocked(level: level, gamesPerLevel: settings.gamesPerLevel)
                     if unlocked {
@@ -20,10 +26,38 @@ struct LevelSelectView: View {
                         LevelCard(levelType: lt, locked: true)
                     }
                 }
+
+                // Guest prompt after Level 1
+                if guestIntroOnly {
+                    VStack(spacing: 12) {
+                        Image(systemName: "lock.shield.fill")
+                            .font(.system(size: 36)).foregroundStyle(.orange)
+                        Text("Register to unlock all levels")
+                            .font(.headline).foregroundStyle(.primary)
+                        Text("Sign in to save your scores, compete on the leaderboard, and earn coins!")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button {
+                            userSession.hasCompletedIntro = true
+                        } label: {
+                            Text("Register Now")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity).padding()
+                                .background(LinearGradient(colors: [Color(hex: "e94560"), Color(hex: "c0392b")],
+                                                           startPoint: .leading, endPoint: .trailing))
+                                .foregroundStyle(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+                    }
+                    .padding(20)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
             }
             .padding()
         }
-        .navigationTitle("Select Level").navigationBarTitleDisplayMode(.large)
+        .navigationTitle(guestIntroOnly ? "Try Level 1" : "Select Level")
+        .navigationBarTitleDisplayMode(.large)
     }
 }
 

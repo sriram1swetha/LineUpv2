@@ -133,62 +133,40 @@ private struct RecentResultRow: View {
 
 struct LeaderboardView: View {
     @EnvironmentObject var settings: GameSettings
-    // Use @ObservedObject with the singleton — NOT @StateObject,
-    // which would create a new instance and discard the shared one.
     @ObservedObject private var ck = CloudKitManager.shared
     @State private var selectedLevel = 1
-    @State private var selectedGame  = 1
     @State private var isLoading     = false
     @State private var showThisWeek  = true
 
-    private var lt: LevelType { LevelType(rawValue: selectedLevel) ?? .linesGuided }
-
     var body: some View {
         VStack(spacing: 0) {
-
-            // iCloud status banner (only shown when unavailable)
             if !ck.isAvailable {
                 HStack(spacing: 8) {
                     Image(systemName: "icloud.slash")
-                    Text(ck.statusMessage)
-                        .font(.caption)
+                    Text(ck.statusMessage).font(.caption)
                     Spacer()
-                    Button("Retry") { ck.retryConnection() }
-                        .font(.caption.bold())
+                    Button("Retry") { ck.retryConnection() }.font(.caption.bold())
                 }
                 .foregroundStyle(.orange)
-                .padding(10)
-                .frame(maxWidth: .infinity)
+                .padding(10).frame(maxWidth: .infinity)
                 .background(Color.orange.opacity(0.12))
             }
 
-            // Filters
             HStack(spacing: 12) {
                 Picker("Level", selection: $selectedLevel) {
                     ForEach(1...LevelType.totalLevels, id: \.self) {
-                        Text("L\($0)").tag($0)
+                        let lt = LevelType(rawValue: $0) ?? .linesGuided
+                        Text("L\($0) \(lt.title)").tag($0)
                     }
                 }
                 .pickerStyle(.menu)
                 .onChange(of: selectedLevel) { _ in refresh() }
-
-                Picker("Game", selection: $selectedGame) {
-                    ForEach(1...settings.gamesPerLevel, id: \.self) { game in
-                        let dc = settings.dotCount(forGame: game, levelType: lt)
-                        Text(LevelGenerator.shapeName(dotCount: dc, isCurve: lt.isCurve))
-                            .tag(game)
-                    }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: selectedGame) { _ in refresh() }
-
                 Spacer()
                 if isLoading { ProgressView().scaleEffect(0.8) }
             }
             .padding(.horizontal).padding(.vertical, 8)
             .background(Color(.secondarySystemBackground))
 
-            // Week toggle
             Picker("Period", selection: $showThisWeek) {
                 Text("This Week").tag(true)
                 Text("All Time").tag(false)
@@ -197,42 +175,24 @@ struct LeaderboardView: View {
             .padding(.horizontal).padding(.vertical, 6)
             .onChange(of: showThisWeek) { _ in refresh() }
 
-            // Content
             if !ck.isAvailable {
-                ContentUnavailableView(
-                    "Leaderboard Unavailable",
-                    systemImage: "wifi.slash",
-                    description: Text(ck.statusMessage))
-                    .frame(maxHeight: .infinity)
-
+                ContentUnavailableView("Leaderboard Unavailable", systemImage: "wifi.slash",
+                    description: Text(ck.statusMessage)).frame(maxHeight: .infinity)
             } else if ck.leaderboard.isEmpty {
-                ContentUnavailableView(
-                    "No Scores Yet",
-                    systemImage: "trophy",
-                    description: Text("Be the first to complete this game!"))
-                    .frame(maxHeight: .infinity)
-
+                ContentUnavailableView("No Scores Yet", systemImage: "trophy",
+                    description: Text("Be the first to complete this level!")).frame(maxHeight: .infinity)
             } else {
                 List {
-                    ForEach(Array(ck.leaderboard.prefix(50).enumerated()), id: \.offset) { rank, entry in
+                    ForEach(Array(ck.leaderboard.prefix(10).enumerated()), id: \.offset) { rank, entry in
                         HStack(spacing: 12) {
-                            // Rank badge
                             ZStack {
-                                Circle()
-                                    .fill(rankColor(rank).opacity(0.15))
-                                    .frame(width: 36, height: 36)
-                                Text(rank < 3 ? ["🥇","🥈","🥉"][rank] : "\(rank+1)")
+                                Circle().fill(rankColor(rank).opacity(0.15)).frame(width: 36, height: 36)
+                                Text(rank < 3 ? ["\u{1F947}","\u{1F948}","\u{1F949}"][rank] : "\(rank+1)")
                                     .font(.system(size: rank < 3 ? 18 : 13, weight: .black))
                             }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(entry.displayName).font(.headline)
-                                HStack(spacing: 8) {
-                                    Text(entry.date, style: .relative)
-                                        .font(.caption).foregroundStyle(.secondary)
-                                    Label(String(format: "%.1fs", entry.totalTime),
-                                          systemImage: "timer")
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                }
+                                Text(entry.date, style: .relative).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             Text("\(entry.score)")
@@ -253,18 +213,14 @@ struct LeaderboardView: View {
         guard ck.isAvailable else { return }
         isLoading = true
         let week = showThisWeek ? CloudKitManager.currentWeekOf : nil
-        ck.fetchLeaderboard(level: selectedLevel, game: selectedGame, weekOf: week)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            isLoading = false
-        }
+        ck.fetchLeaderboard(level: selectedLevel, weekOf: week)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { isLoading = false }
     }
 
     private func rankColor(_ rank: Int) -> Color {
         switch rank {
-        case 0: return .yellow
-        case 1: return Color(.systemGray)
-        case 2: return .orange
-        default: return .blue
+        case 0: return .yellow; case 1: return Color(.systemGray)
+        case 2: return .orange; default: return .blue
         }
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import AudioToolbox
 
 private enum DrawPhase { case idle, drawing, reviewing, complete }
 private struct StrokeRecord { let stroke: FinishedStroke; let score: Int }
@@ -88,12 +89,21 @@ struct GameView: View {
         LevelType(rawValue: currentLevel) ?? currentLevelType
     }
 
+    // ── Coin animation state ────────────────────────────────────────────────
+    @State private var showCopperAnim = false
+    @State private var showSilverAnim = false
+    @State private var showGoldAnim   = false
+    @State private var copperAwarded  = 0
+    @State private var silverAwarded  = 0
+    @State private var goldAwarded    = 0
+    @State private var showGuestRegisterPrompt = false
+
     // ── Body ───────────────────────────────────────────────────────────────
 
     var body: some View {
         VStack(spacing: 0) {
-            scoreHeader
-            ZStack { canvasLayer; topArrows }
+            topStrip
+            ZStack { canvasLayer; topArrows; flyingCoinOverlay }
             footerBar
         }
         .navigationTitle("Lv \(currentLevel) · \(config.shapeName)")
@@ -117,34 +127,54 @@ struct GameView: View {
                 pulseOn = true
             }
         }
+        .alert("Ready for more?", isPresented: $showGuestRegisterPrompt) {
+            Button("Register Now") {
+                UserSession.shared.hasCompletedIntro = true
+            }
+            Button("Keep Playing", role: .cancel) { }
+        } message: {
+            Text("Sign in to unlock all levels, save scores to the leaderboard, and earn coins across sessions!")
+        }
     }
 
-    // ── Score header ───────────────────────────────────────────────────────
+    // ── Top strip: Chest + connection hint + pips ──────────────────────────
 
-    private var scoreHeader: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    Text("Score: \(totalScore) / \(maxScore)").font(.headline)
-                    if gameStartTime != nil || elapsedSeconds > 0 {
-                        Label(String(format: "%.0fs", elapsedSeconds), systemImage: "timer")
-                            .font(.caption).foregroundStyle(.secondary)
+    private var topStrip: some View {
+        HStack(spacing: 10) {
+            // Chest icon with coin counts
+            HStack(spacing: 4) {
+                Image(systemName: "shippingbox.fill")
+                    .font(.title3).foregroundStyle(Color(hex: "f5a623"))
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 3) {
+                        Circle().fill(Color(hex: "CD7F32")).frame(width: 8, height: 8)
+                        Text("\(UserSession.shared.copperCoins)").font(.system(size: 9, weight: .bold)).foregroundStyle(Color(hex: "CD7F32"))
+                    }
+                    HStack(spacing: 3) {
+                        Circle().fill(Color(.systemGray)).frame(width: 8, height: 8)
+                        Text("\(UserSession.shared.silverCoins)").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
+                    }
+                    HStack(spacing: 3) {
+                        Circle().fill(Color(hex: "FFD700")).frame(width: 8, height: 8)
+                        Text("\(UserSession.shared.goldCoins)").font(.system(size: 9, weight: .bold)).foregroundStyle(Color(hex: "FFD700"))
                     }
                 }
-                // Always show a second line so header height never changes.
-                if phase == .complete {
-                    Text("All connections drawn")
-                        .font(.caption).foregroundStyle(.green)
-                } else if let conn = currentConn {
-                    Text(currentLevelType.isCurve
-                         ? "Trace arc: dot \(conn.0+1) → dot \(conn.1+1)"
-                         : "Draw: dot \(conn.0+1) → dot \(conn.1+1)")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text(" ").font(.caption) // placeholder to hold height
-                }
             }
+
             Spacer()
+
+            // Connection hint
+            if phase == .complete {
+                Text("All connections drawn ✓")
+                    .font(.caption).foregroundStyle(.green)
+            } else if let conn = currentConn {
+                Text("dot \(conn.0+1) → dot \(conn.1+1)")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            // Score pips
             HStack(spacing: 5) {
                 ForEach(0..<config.connections.count, id: \.self) { i in
                     RoundedRectangle(cornerRadius: 3).fill(pipColor(index: i))
@@ -395,25 +425,125 @@ struct GameView: View {
 
     private var footerBar: some View {
         VStack(spacing: 4) {
-            if phase == .complete {
-                Label("Complete! Score: \(totalScore)/\(maxScore)", systemImage: "checkmark.circle.fill")
-                    .font(.caption.bold()).foregroundStyle(.green)
-            } else {
-                Text(footerHint)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+            // Coin animation overlays
+            if showCopperAnim || showSilverAnim || showGoldAnim {
+                coinAnimationBanner
             }
+
+            HStack(spacing: 12) {
+                // Score
+                VStack(spacing: 1) {
+                    Text("Score").font(.system(size: 9)).foregroundStyle(.secondary)
+                    Text("\(totalScore)/\(maxScore)")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                }
+
+                // Percentage
+                VStack(spacing: 1) {
+                    Text("Accuracy").font(.system(size: 9)).foregroundStyle(.secondary)
+                    Text(maxScore > 0 ? "\(totalScore * 100 / maxScore)%" : "—")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundStyle(scoreColor(maxScore > 0 ? totalScore * 100 / maxScore : 0))
+                }
+
+                // Time
+                VStack(spacing: 1) {
+                    Text("Time").font(.system(size: 9)).foregroundStyle(.secondary)
+                    Text(elapsedSeconds > 0 ? String(format: "%.1fs", elapsedSeconds) : "—")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                }
+
+                Spacer()
+
+                // Status + hint
+                if phase == .complete {
+                    Label("Complete", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(.green)
+                } else {
+                    Text(footerHint)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
             if totalUndosUsed > 0 {
                 Text("\(totalUndosUsed) undo\(totalUndosUsed == 1 ? "" : "s") used")
-                    .font(.caption2)
+                    .font(.system(size: 9))
                     .foregroundStyle(Color(.tertiaryLabel))
             }
         }
-        .padding(.horizontal)
+        .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .frame(height: 52).frame(maxWidth: .infinity)
+        .frame(height: 56).frame(maxWidth: .infinity)
         .background(Color(.secondarySystemBackground))
+    }
+
+    // ── Coin animation banner ─────────────────────────────────────────────
+
+    private var coinAnimationBanner: some View {
+        // Summary text showing what was awarded (appears in footer)
+        HStack(spacing: 16) {
+            if showCopperAnim && copperAwarded > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "circle.fill").font(.system(size: 10))
+                        .foregroundStyle(Color(hex: "CD7F32"))
+                    Text("+\(copperAwarded)").font(.caption.bold()).foregroundStyle(Color(hex: "CD7F32"))
+                }
+                .transition(.scale.combined(with: .opacity))
+            }
+            if showSilverAnim && silverAwarded > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "circle.fill").font(.system(size: 10))
+                        .foregroundStyle(Color(.systemGray3))
+                    Text("+\(silverAwarded)").font(.caption.bold()).foregroundStyle(.secondary)
+                }
+                .transition(.scale.combined(with: .opacity))
+            }
+            if showGoldAnim && goldAwarded > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "circle.fill").font(.system(size: 10))
+                        .foregroundStyle(Color(hex: "FFD700"))
+                    Text("+\(goldAwarded)").font(.caption.bold()).foregroundStyle(Color(hex: "FFD700"))
+                }
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    // ── Flying coin overlay (rendered over the canvas) ─────────────────────
+
+    @State private var flyingCoins: [FlyingCoin] = []
+
+    private var flyingCoinOverlay: some View {
+        GeometryReader { geo in
+            ForEach(flyingCoins) { coin in
+                CoinView(coin: coin, containerSize: geo.size)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func spawnFlyingCoins(type: CoinType, count: Int, delay baseDelay: Double) {
+        let displayCount = min(count, 8)   // cap visual coins to avoid clutter
+        for i in 0..<displayCount {
+            let coin = FlyingCoin(type: type,
+                                  startX: CGFloat.random(in: 0.3...0.7),
+                                  startY: CGFloat.random(in: 0.4...0.6),
+                                  delay: baseDelay + Double(i) * 0.08)
+            DispatchQueue.main.asyncAfter(deadline: .now() + coin.delay) {
+                withAnimation(.easeInOut(duration: 0.9)) {
+                    flyingCoins.append(coin)
+                }
+                // Play clink sound
+                CoinSoundPlayer.playJingle()
+            }
+            // Remove after animation completes
+            DispatchQueue.main.asyncAfter(deadline: .now() + coin.delay + 1.2) {
+                flyingCoins.removeAll { $0.id == coin.id }
+            }
+        }
     }
 
     private var footerHint: String {
@@ -696,11 +826,15 @@ struct GameView: View {
         showIdeal = false; idealOpacity = 0; lastScoredConnIndex = nil
         gameStartTime = nil; segmentStartTime = nil; elapsedSeconds = 0
         guideFlashOpacity = 0
+        showCopperAnim = false; showSilverAnim = false; showGoldAnim = false
+        copperAwarded = 0; silverAwarded = 0; goldAwarded = 0
+        flyingCoins = []; showGuestRegisterPrompt = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { flashGuide() }
     }
 
     private func saveResult() {
         guard !resultSaved else { return }
+        let scores = lineScores.map { $0.timeAdjustedScore }
         scoreStore.save(result: GameResult(
             id: UUID(), level: currentLevel, levelType: currentLevelType,
             game: currentGame, shapeName: config.shapeName,
@@ -712,9 +846,70 @@ struct GameView: View {
         // Submit to CloudKit leaderboard
         if UserSession.shared.isGamer {
             CloudKitManager.shared.submitScore(
+                playerID: UserSession.shared.appleUserID,
                 displayName: UserSession.shared.displayName,
                 level: currentLevel, game: currentGame,
                 score: totalScore, totalTime: elapsedSeconds)
+        }
+
+        // Award coins with staggered animations
+        awardCoinsAnimated(scores: scores)
+    }
+
+    private func awardCoinsAnimated(scores: [Int]) {
+        let total = scores.reduce(0, +)
+        copperAwarded = total / 10
+        silverAwarded = scores.filter { $0 >= 90 && $0 <= 95 }.count
+        let g96 = scores.filter { $0 >= 96 && $0 <= 99 }.count
+        let g100 = scores.filter { $0 == 100 }.count * 5
+        goldAwarded = g96 + g100
+
+        var delay: Double = 0.3
+
+        if copperAwarded > 0 {
+            let d = delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + d) {
+                withAnimation(.spring(response: 0.4)) { showCopperAnim = true }
+                UserSession.shared.copperCoins += copperAwarded
+            }
+            spawnFlyingCoins(type: .copper, count: copperAwarded, delay: delay)
+            delay += 1.0
+        }
+
+        if silverAwarded > 0 {
+            let d = delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + d) {
+                withAnimation(.spring(response: 0.4)) { showSilverAnim = true }
+                UserSession.shared.silverCoins += silverAwarded
+            }
+            spawnFlyingCoins(type: .silver, count: silverAwarded, delay: delay)
+            delay += 1.0
+        }
+
+        if goldAwarded > 0 {
+            let d = delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + d) {
+                withAnimation(.spring(response: 0.4)) { showGoldAnim = true }
+                let g96only = scores.filter { $0 >= 96 && $0 <= 99 }.count
+                let perfect = scores.filter { $0 == 100 }.count * 5
+                UserSession.shared.goldCoins += g96only + perfect
+            }
+            spawnFlyingCoins(type: .gold, count: goldAwarded, delay: delay)
+            delay += 1.0
+        }
+
+        // Clear text animations after all done
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 1.5) {
+            withAnimation(.easeOut(duration: 0.5)) {
+                showCopperAnim = false; showSilverAnim = false; showGoldAnim = false
+            }
+        }
+
+        // Show registration prompt for guests after Level 1 completion
+        if UserSession.shared.isGuest || UserSession.shared.appleUserID.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay + 2.0) {
+                showGuestRegisterPrompt = true
+            }
         }
     }
 }
@@ -756,5 +951,147 @@ struct StrokePath: Shape {
         guard points.count >= 2 else { return p }
         p.move(to: points[0]); points.dropFirst().forEach { p.addLine(to: $0) }
         return p
+    }
+}
+
+// ── Coin animation types ──────────────────────────────────────────────────────
+
+enum CoinType {
+    case copper, silver, gold
+
+    var color: Color {
+        switch self {
+        case .copper: return Color(hex: "CD7F32")
+        case .silver: return Color(.systemGray3)
+        case .gold:   return Color(hex: "FFD700")
+        }
+    }
+
+    var highlight: Color {
+        switch self {
+        case .copper: return Color(hex: "E8A860")
+        case .silver: return .white
+        case .gold:   return Color(hex: "FFF4B0")
+        }
+    }
+}
+
+struct FlyingCoin: Identifiable {
+    let id = UUID()
+    let type: CoinType
+    let startX: CGFloat    // 0...1 fraction of container width
+    let startY: CGFloat    // 0...1 fraction of container height
+    let delay: Double
+}
+
+struct CoinView: View {
+    let coin: FlyingCoin
+    let containerSize: CGSize
+
+    @State private var phase: Int = 0  // 0 = start, 1 = peak, 2 = landed
+
+    private var startPos: CGPoint {
+        CGPoint(x: containerSize.width * coin.startX,
+                y: containerSize.height * coin.startY)
+    }
+
+    // Chest is top-left corner area
+    private var chestPos: CGPoint {
+        CGPoint(x: 30, y: -10)
+    }
+
+    // Peak of the arc (high into the air)
+    private var peakPos: CGPoint {
+        CGPoint(x: (startPos.x + chestPos.x) / 2 + CGFloat.random(in: -30...30),
+                y: min(startPos.y, chestPos.y) - 120 - CGFloat.random(in: 0...60))
+    }
+
+    private var currentPos: CGPoint {
+        switch phase {
+        case 0: return startPos
+        case 1: return peakPos
+        default: return chestPos
+        }
+    }
+
+    private var currentScale: CGFloat {
+        switch phase {
+        case 0: return 0.3
+        case 1: return 1.2
+        default: return 0.4
+        }
+    }
+
+    private var currentOpacity: Double {
+        switch phase {
+        case 0: return 0.0
+        case 1: return 1.0
+        default: return 0.6
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            // Coin shadow (3D effect)
+            Ellipse()
+                .fill(coin.type.color.opacity(0.3))
+                .frame(width: 22, height: 8)
+                .offset(y: 10)
+                .scaleEffect(phase == 1 ? 1.5 : 0.5)
+
+            // Coin body — ellipse that squishes horizontally for 3D spin effect
+            ZStack {
+                Ellipse()
+                    .fill(
+                        LinearGradient(
+                            colors: [coin.type.highlight, coin.type.color, coin.type.color.opacity(0.7)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing)
+                    )
+                    .frame(width: 20, height: 20)
+                    .overlay(
+                        Ellipse()
+                            .stroke(coin.type.color.opacity(0.5), lineWidth: 1.5)
+                    )
+
+                // Inner shine
+                Circle()
+                    .fill(coin.type.highlight.opacity(0.5))
+                    .frame(width: 6, height: 6)
+                    .offset(x: -3, y: -3)
+            }
+            .scaleEffect(x: phase == 1 ? 1.0 : 0.6, y: 1.0)   // horizontal squish = spin
+            .rotation3DEffect(.degrees(phase == 1 ? 360 : 0), axis: (x: 0, y: 1, z: 0))
+        }
+        .scaleEffect(currentScale)
+        .opacity(currentOpacity)
+        .position(currentPos)
+        .onAppear {
+            // Phase 1: fly up to peak
+            withAnimation(.easeOut(duration: 0.4)) {
+                phase = 1
+            }
+            // Phase 2: fall into chest
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                withAnimation(.easeIn(duration: 0.45)) {
+                    phase = 2
+                }
+            }
+        }
+    }
+}
+
+// ── Coin sound player ─────────────────────────────────────────────────────────
+
+enum CoinSoundPlayer {
+    private static var lastPlayTime: TimeInterval = 0
+
+    /// Play a short system click sound as a coin "clink".
+    /// Throttled so rapid coins don't overwhelm the audio.
+    static func playJingle() {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastPlayTime > 0.06 else { return }
+        lastPlayTime = now
+        // System sound 1057 = short metallic "tink" (keyboard click variant)
+        AudioServicesPlaySystemSound(1057)
     }
 }

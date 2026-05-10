@@ -22,19 +22,21 @@ struct SettingsView: View {
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         Text(userSession.displayName).font(.headline)
-                        HStack(spacing: 4) {
+                        if !userSession.playerEmail.isEmpty {
                             Text(userSession.playerEmail).font(.caption).foregroundStyle(.secondary)
-                            if userSession.emailVerified {
-                                Image(systemName: "checkmark.seal.fill")
+                        }
+                        HStack(spacing: 8) {
+                            if !userSession.appleUserID.isEmpty {
+                                Label("Apple ID", systemImage: "checkmark.seal.fill")
                                     .font(.caption2).foregroundStyle(.green)
                             }
+                            Text(userSession.role == .admin ? "Admin" : "Gamer")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 8).padding(.vertical, 2)
+                                .background(userSession.isAdmin ? Color.orange.opacity(0.15) : Color.blue.opacity(0.15))
+                                .foregroundStyle(userSession.isAdmin ? .orange : .blue)
+                                .clipShape(Capsule())
                         }
-                        Text(userSession.role == .admin ? "Admin" : "Gamer")
-                            .font(.caption2.bold())
-                            .padding(.horizontal, 8).padding(.vertical, 2)
-                            .background(userSession.isAdmin ? Color.orange.opacity(0.15) : Color.blue.opacity(0.15))
-                            .foregroundStyle(userSession.isAdmin ? .orange : .blue)
-                            .clipShape(Capsule())
                     }
                 }
 
@@ -53,44 +55,73 @@ struct SettingsView: View {
                 Button(role: .destructive) {
                     showLogoutConfirm = true
                 } label: {
-                    Label("Log Out", systemImage: "rectangle.portrait.and.arrow.right")
+                    Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
                 }
-                .confirmationDialog("Log out?", isPresented: $showLogoutConfirm) {
-                    Button("Log Out", role: .destructive) { userSession.logout() }
+                .confirmationDialog("Sign out?", isPresented: $showLogoutConfirm) {
+                    Button("Sign Out", role: .destructive) { userSession.logout() }
                     Button("Cancel", role: .cancel) { }
                 } message: {
-                    Text("You'll return to the intro level. Your local scores are kept.")
+                    Text("You'll return to the sign-in screen. Your local scores are kept.")
                 }
             } header: {
                 Label("Profile", systemImage: "person.circle")
             }
 
-            // ── Level Structure info ───────────────────────────────────────
+            // ── CloudKit Status ───────────────────────────────────────────
             Section {
-                ForEach(LevelType.allCases, id: \.rawValue) { lt in
-                    HStack(spacing: 12) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color(hex: lt.badgeColor).opacity(0.15))
-                                .frame(width: 36, height: 36)
-                            Text("\(lt.rawValue)")
-                                .font(.system(size: 16, weight: .black, design: .rounded))
-                                .foregroundStyle(Color(hex: lt.badgeColor))
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(lt.title).font(.subheadline.bold())
-                            Text(lt.subtitle).font(.caption).foregroundStyle(.secondary)
-                        }
+                HStack {
+                    Text("iCloud")
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Image(systemName: CloudKitManager.shared.isAvailable
+                              ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundStyle(CloudKitManager.shared.isAvailable ? .green : .red)
+                        Text(CloudKitManager.shared.statusMessage)
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    .padding(.vertical, 2)
+                }
+
+                if let status = CloudKitManager.shared.lastSubmitStatus {
+                    HStack {
+                        Text("Last submit")
+                        Spacer()
+                        Text(status)
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
+                if let error = CloudKitManager.shared.lastError {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Error", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                        Text(error)
+                            .font(.caption2).foregroundStyle(.red)
+                    }
+                }
+
+                if userSession.isAdmin {
+                    Button {
+                        CloudKitManager.shared.submitScore(
+                            playerID: userSession.appleUserID,
+                            displayName: userSession.displayName,
+                            level: 1, game: 1, score: 42, totalTime: 5.0)
+                    } label: {
+                        Label("Test Submit Score", systemImage: "arrow.up.circle")
+                    }
+
+                    Button {
+                        CloudKitManager.shared.retryConnection()
+                    } label: {
+                        Label("Reconnect", systemImage: "arrow.clockwise")
+                    }
                 }
             } header: {
-                Label("Level Structure (Fixed)", systemImage: "lock.shield")
+                Label("CloudKit", systemImage: "icloud")
             } footer: {
-                Text("LineUp has 7 levels progressing from lines to curves, shapes, and mazes. Complete each level to unlock the next.")
+                Text("Scores are submitted to CloudKit when you complete a game. Check icloud.developer.apple.com → your container → Records to verify.")
             }
 
-            // ── Games per level ───────────────────────────────────────────
+            // ── Games per level (admin-only editable) ──────────────────────
             Section {
                 Stepper(value: $settings.gamesPerLevel,
                         in: settings.minGamesPerLevel...settings.maxGamesPerLevel) {
@@ -123,6 +154,8 @@ struct SettingsView: View {
             } footer: {
                 Text("Game 1 = 2 dots, Game 2 = 3 dots, … Game \(settings.gamesPerLevel) = \(settings.gamesPerLevel + 1) dots.")
             }
+            .disabled(!userSession.isAdmin)
+            .opacity(userSession.isAdmin ? 1.0 : 0.45)
 
             // ── Dot size ──────────────────────────────────────────────────
             Section {
@@ -147,6 +180,8 @@ struct SettingsView: View {
             } footer: {
                 Text("All levels share the same dot size.")
             }
+            .disabled(!userSession.isAdmin)
+            .opacity(userSession.isAdmin ? 1.0 : 0.45)
 
             // ── Stroke thicknesses ────────────────────────────────────────
             Section {
@@ -189,6 +224,8 @@ struct SettingsView: View {
             } footer: {
                 Text("Thin stroke never exceeds dot diameter.")
             }
+            .disabled(!userSession.isAdmin)
+            .opacity(userSession.isAdmin ? 1.0 : 0.45)
 
             // ── Drawing mode ────────────────────────────────────────────
             Section {
@@ -237,6 +274,8 @@ struct SettingsView: View {
             } footer: {
                 Text("0 undos = unlimited. Scores are penalized when total time exceeds par (connections × par seconds).")
             }
+            .disabled(!userSession.isAdmin)
+            .opacity(userSession.isAdmin ? 1.0 : 0.45)
 
             // ── Music ─────────────────────────────────────────────────────
             Section {
@@ -281,10 +320,10 @@ struct SettingsView: View {
                     } label: {
                         Label(audio.isPlaying ? "Pause" : "Play",
                               systemImage: audio.isPlaying ? "pause.fill" : "play.fill")
+                            .labelStyle(.iconOnly)
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color(hex: "e94560"))
+                    .buttonStyle(.bordered)
 
                     Button {
                         audio.stop()
@@ -316,9 +355,12 @@ struct SettingsView: View {
                 Button(role: .destructive) { showResetConfirm = true } label: {
                     Label("Reset All Scores & Unlock Progress", systemImage: "trash")
                 }
+                .disabled(!userSession.isAdmin)
             } header: {
                 Label("Data", systemImage: "externaldrive")
             }
+            .disabled(!userSession.isAdmin)
+            .opacity(userSession.isAdmin ? 1.0 : 0.45)
 
             // ── App Feedback ──────────────────────────────────────────────
             Section {

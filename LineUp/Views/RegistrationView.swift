@@ -1,37 +1,14 @@
 import SwiftUI
+import AuthenticationServices
 
 struct RegistrationView: View {
     @EnvironmentObject var userSession: UserSession
-
-    // ── Form fields ────────────────────────────────────────────────────────
-    @State private var name         = ""
-    @State private var email        = ""
-    @State private var confirmEmail = ""
-
-    // ── Validation ─────────────────────────────────────────────────────────
-    @State private var nameError         = false
-    @State private var emailError        = false
-    @State private var emailMismatch     = false
-    @State private var showConfirmStep   = false
+    @Environment(\.colorScheme) var colorScheme
 
     // ── Admin ──────────────────────────────────────────────────────────────
     @State private var showAdminLogin = false
     @State private var adminPasscode  = ""
     @State private var adminError     = false
-
-    // ── Feedback ───────────────────────────────────────────────────────────
-    @State private var isSaving = false
-    @State private var showSuccess = false
-
-    private var emailIsValid: Bool {
-        let e = email.trimmingCharacters(in: .whitespaces).lowercased()
-        return e.contains("@") && e.contains(".") && e.count >= 5
-    }
-
-    private var emailsMatch: Bool {
-        email.trimmingCharacters(in: .whitespaces).lowercased() ==
-        confirmEmail.trimmingCharacters(in: .whitespaces).lowercased()
-    }
 
     var body: some View {
         ZStack {
@@ -39,197 +16,81 @@ struct RegistrationView: View {
                            startPoint: .topLeading, endPoint: .bottomTrailing)
                 .ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: 28) {
-                    header
-                    formFields
-                    registerButton
+            VStack(spacing: 32) {
+                Spacer()
 
-                    // Optional: Confirm email step (appears after first submit)
-                    if showConfirmStep && !showSuccess {
-                        confirmEmailSection
-                    }
+                // ── Header ────────────────────────────────────────────
+                VStack(spacing: 14) {
+                    Image(systemName: "gamecontroller.fill")
+                        .font(.system(size: 56))
+                        .foregroundStyle(Color(hex: "e94560"))
 
-                    if showSuccess {
-                        successBanner
-                    }
+                    Text("Welcome to LineUp")
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
 
-                    adminSection
-
-                    // iCloud status
-                    iCloudStatus
-
-                    Spacer(minLength: 40)
+                    Text("Sign in to save scores, unlock all levels,\nand compete on the leaderboard.")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.65))
+                        .multilineTextAlignment(.center)
                 }
-            }
-        }
-    }
 
-    // MARK: - Header
-
-    private var header: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "person.badge.plus")
-                .font(.system(size: 52))
-                .foregroundStyle(Color(hex: "e94560"))
-                .padding(.top, 48)
-
-            Text("Join LineUp")
-                .font(.system(size: 30, weight: .black, design: .rounded))
-                .foregroundStyle(.white)
-
-            Text("Create your free account to save scores,\nunlock all levels and compete on leaderboards.")
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.65))
-                .multilineTextAlignment(.center)
-        }
-    }
-
-    // MARK: - Form fields
-
-    private var formFields: some View {
-        VStack(spacing: 16) {
-            // Name
-            VStack(alignment: .leading, spacing: 6) {
-                Label("Full Name", systemImage: "person")
-                    .font(.caption.bold()).foregroundStyle(.white.opacity(0.7))
-                TextField("e.g. Sriram Sistla", text: $name)
-                    .textContentType(.name)
-                    .padding()
-                    .background(.white.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .foregroundStyle(.white)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(nameError ? Color.red : Color.clear, lineWidth: 1.5)
-                    )
-                if nameError {
-                    Text("Please enter your full name (first and last)")
-                        .font(.caption).foregroundStyle(.red)
+                // ── Sign in with Apple ────────────────────────────────
+                SignInWithAppleButton(.signIn) { request in
+                    request.requestedScopes = [.fullName, .email]
+                } onCompletion: { result in
+                    handleSignInResult(result)
                 }
-            }
-
-            // Email
-            VStack(alignment: .leading, spacing: 6) {
-                Label("Email", systemImage: "envelope")
-                    .font(.caption.bold()).foregroundStyle(.white.opacity(0.7))
-                TextField("you@example.com", text: $email)
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
-                    .padding()
-                    .background(.white.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .foregroundStyle(.white)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(emailError ? Color.red : Color.clear, lineWidth: 1.5)
-                    )
-                if emailError {
-                    Text("Please enter a valid email address")
-                        .font(.caption).foregroundStyle(.red)
-                }
-            }
-        }
-        .padding(.horizontal, 28)
-    }
-
-    // MARK: - Register button
-
-    private var registerButton: some View {
-        Button {
-            attemptRegister()
-        } label: {
-            HStack(spacing: 8) {
-                if isSaving {
-                    ProgressView().tint(.white)
-                }
-                Text(showConfirmStep ? "Register" : "Continue")
-                    .font(.headline)
-            }
-            .frame(maxWidth: .infinity).padding()
-            .background(LinearGradient(colors: [Color(hex: "e94560"), Color(hex: "c0392b")],
-                                       startPoint: .leading, endPoint: .trailing))
-            .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .shadow(color: Color(hex: "e94560").opacity(0.4), radius: 10, y: 4)
-        }
-        .disabled(isSaving)
-        .padding(.horizontal, 28)
-    }
-
-    // MARK: - Confirm email step
-
-    private var confirmEmailSection: some View {
-        VStack(spacing: 12) {
-            Text("Verify your email")
-                .font(.headline).foregroundStyle(.white)
-
-            Text("Re-enter your email to confirm it's correct. This step is optional — you can skip it.")
-                .font(.caption).foregroundStyle(.white.opacity(0.6))
-                .multilineTextAlignment(.center)
-
-            TextField("Confirm email", text: $confirmEmail)
-                .textContentType(.emailAddress)
-                .keyboardType(.emailAddress)
-                .autocapitalization(.none)
-                .padding()
-                .background(.white.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .foregroundStyle(.white)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(emailMismatch ? Color.red : Color.clear, lineWidth: 1.5)
+                .signInWithAppleButtonStyle(
+                    colorScheme == .dark ? .white : .black
                 )
+                .frame(height: 52)
+                .cornerRadius(14)
+                .padding(.horizontal, 40)
+                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
 
-            if emailMismatch {
-                Text("Emails don't match — please check and try again")
-                    .font(.caption).foregroundStyle(.red)
-            }
-
-            HStack(spacing: 12) {
-                Button {
-                    verifyAndRegister()
-                } label: {
-                    Text("Confirm & Register")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity).padding()
-                        .background(Color.green.opacity(0.8))
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                // ── Error message ─────────────────────────────────────
+                if let error = userSession.authError {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text(error)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 40)
                 }
 
+                // ── Skip for now ──────────────────────────────────────
                 Button {
-                    skipVerification()
+                    // Let user continue as guest with limited features.
+                    // They'll be prompted again next session.
+                    userSession.role = .gamer
+                    userSession.playerName = "Guest"
                 } label: {
-                    Text("Skip")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity).padding()
-                        .background(Color.white.opacity(0.15))
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    Text("Continue as Guest")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.5))
                 }
+
+                // ── iCloud status ─────────────────────────────────────
+                HStack(spacing: 6) {
+                    Image(systemName: CloudKitManager.shared.isAvailable
+                          ? "checkmark.icloud.fill" : "xmark.icloud")
+                        .foregroundStyle(CloudKitManager.shared.isAvailable ? .green : .orange)
+                        .font(.caption2)
+                    Text(CloudKitManager.shared.statusMessage)
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+
+                Spacer()
+
+                // ── Admin login (hidden at bottom) ────────────────────
+                adminSection
+
+                Spacer().frame(height: 20)
             }
         }
-        .padding(.horizontal, 28)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
-    // MARK: - Success banner
-
-    private var successBanner: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 36)).foregroundStyle(.green)
-            Text("Welcome, \(userSession.displayName)!")
-                .font(.headline).foregroundStyle(.white)
-            if userSession.emailVerified {
-                Label("Email verified", systemImage: "checkmark.circle.fill")
-                    .font(.caption).foregroundStyle(.green)
-            }
-        }
-        .padding()
-        .transition(.scale.combined(with: .opacity))
     }
 
     // MARK: - Admin section
@@ -237,8 +98,8 @@ struct RegistrationView: View {
     private var adminSection: some View {
         VStack(spacing: 10) {
             Button { withAnimation { showAdminLogin.toggle() } } label: {
-                Text("Developer / Admin login")
-                    .font(.caption).foregroundStyle(.white.opacity(0.4))
+                Text("Developer / Admin")
+                    .font(.caption2).foregroundStyle(.white.opacity(0.25))
             }
 
             if showAdminLogin {
@@ -248,10 +109,14 @@ struct RegistrationView: View {
                         .background(.white.opacity(0.12))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .foregroundStyle(.white)
+
                     if adminError {
                         Text("Incorrect passcode").font(.caption).foregroundStyle(.red)
                     }
-                    Button { attemptAdminLogin() } label: {
+
+                    Button {
+                        adminError = !userSession.tryAdminLogin(passcode: adminPasscode)
+                    } label: {
                         Text("Login as Admin")
                             .font(.subheadline.bold())
                             .frame(maxWidth: .infinity).padding()
@@ -260,77 +125,27 @@ struct RegistrationView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                 }
-                .padding(.horizontal, 28)
+                .padding(.horizontal, 40)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
     }
 
-    // MARK: - iCloud status
+    // MARK: - Handle Sign in with Apple result
 
-    private var iCloudStatus: some View {
-        HStack(spacing: 6) {
-            Image(systemName: CloudKitManager.shared.isAvailable
-                  ? "checkmark.icloud.fill" : "xmark.icloud")
-                .foregroundStyle(CloudKitManager.shared.isAvailable ? .green : .orange)
-            Text(CloudKitManager.shared.statusMessage)
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.4))
-        }
-        .padding(.top, 8)
-    }
-
-    // MARK: - Actions
-
-    private func attemptRegister() {
-        let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        nameError  = trimmedName.isEmpty || !trimmedName.contains(" ")
-        emailError = !emailIsValid
-
-        guard !nameError, !emailError else { return }
-
-        if !showConfirmStep {
-            // First tap — show the optional email confirmation step.
-            withAnimation(.easeInOut(duration: 0.3)) {
-                showConfirmStep = true
+    private func handleSignInResult(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .success(let auth):
+            guard let credential = auth.credential as? ASAuthorizationAppleIDCredential else {
+                userSession.authError = "Unexpected credential type"
+                return
             }
-            return
+            userSession.handleAppleSignIn(credential: credential)
+
+        case .failure(let error):
+            // ASAuthorizationError.canceled = user tapped Cancel — don't show error.
+            if (error as? ASAuthorizationError)?.code == .canceled { return }
+            userSession.authError = error.localizedDescription
         }
-
-        // Second tap without confirming — register without verification.
-        skipVerification()
-    }
-
-    private func verifyAndRegister() {
-        emailMismatch = !emailsMatch
-        guard !emailMismatch else { return }
-
-        isSaving = true
-        userSession.register(name: name, email: email, verified: true)
-
-        withAnimation(.spring(response: 0.5)) {
-            showSuccess = true
-            isSaving = false
-        }
-    }
-
-    private func skipVerification() {
-        isSaving = true
-        userSession.register(name: name, email: email, verified: false)
-
-        withAnimation(.spring(response: 0.5)) {
-            showSuccess = true
-            isSaving = false
-        }
-    }
-
-    private func attemptAdminLogin() {
-        // Admin also needs name + email.
-        let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        if !trimmedName.isEmpty {
-            userSession.playerName  = trimmedName
-            userSession.playerEmail = email.trimmingCharacters(in: .whitespaces).lowercased()
-        }
-        adminError = !userSession.tryAdminLogin(passcode: adminPasscode)
     }
 }
