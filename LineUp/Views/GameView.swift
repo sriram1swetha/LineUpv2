@@ -72,12 +72,11 @@ struct GameView: View {
         guard connectionIndex < config.connections.count else { return nil }
         return config.connections[connectionIndex]
     }
-    // Undo allowed: not exceeded per-segment limit (0 = unlimited)
-    private var canUndo: Bool {
-        guard !lineScores.isEmpty && (phase == .idle || phase == .complete) else { return false }
-        let max = settings.maxUndosPerSegment
-        return max == 0 || undosThisSegment < max
+    // Undo: first undo per segment is free, additional cost 1 silver each
+    private var hasUndoableStrokes: Bool {
+        !lineScores.isEmpty && (phase == .idle || phase == .complete)
     }
+    private var isFreeUndo: Bool { undosThisSegment < 1 }
     private var canRedo: Bool { !redoStack.isEmpty && (phase == .idle || phase == .complete) }
     private var currentGameHasHistory: Bool { scoreStore.bestScore(level: currentLevel, game: currentGame) != nil }
     private var hasPrev: Bool { currentGame > 1 || currentLevel > 1 }
@@ -97,6 +96,8 @@ struct GameView: View {
     @State private var silverAwarded  = 0
     @State private var goldAwarded    = 0
     @State private var showGuestRegisterPrompt = false
+    @State private var showPaidUndoAlert = false
+    @State private var showRetryCostAlert = false
 
     // ── Body ───────────────────────────────────────────────────────────────
 
@@ -110,7 +111,7 @@ struct GameView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
-                Button { restartGame() } label: {
+                Button { handleRestartTap() } label: {
                     Image(systemName: "arrow.counterclockwise.circle.fill")
                         .font(.title3)
                 }
@@ -134,6 +135,28 @@ struct GameView: View {
             Button("Keep Playing", role: .cancel) { }
         } message: {
             Text("Sign in to unlock all levels, save scores to the leaderboard, and earn coins across sessions!")
+        }
+        .alert("Extra Undo", isPresented: $showPaidUndoAlert) {
+            Button("Spend 1 Silver Coin") {
+                if UserSession.shared.silverCoins >= 1 {
+                    UserSession.shared.silverCoins -= 1
+                    performUndo()
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("First undo is free. Each extra undo costs 1 Silver coin.\n\nYou have \(UserSession.shared.silverCoins) Silver coins.")
+        }
+        .alert("Retry Game", isPresented: $showRetryCostAlert) {
+            Button("Spend 1 Gold Coin") {
+                if UserSession.shared.goldCoins >= 1 {
+                    UserSession.shared.goldCoins -= 1
+                    restartGame()
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Full retry costs 1 Gold coin.\n\nYou have \(UserSession.shared.goldCoins) Gold coins.")
         }
     }
 
@@ -334,17 +357,17 @@ struct GameView: View {
 
                 Spacer()
 
-                // ↶ Undo — between the two chevrons, always accessible,
-                // including after completion (so the last stroke can be undone).
+                // ↶ Undo — first per segment is free, extras cost 1 silver
                 VStack(spacing: 2) {
-                    Button { performUndo() } label: {
+                    Button { handleUndoTap() } label: {
                         Image(systemName: "arrow.uturn.backward.circle.fill")
                             .font(.system(size: 34))
-                            .foregroundStyle(canUndo ? Color.blue.opacity(0.85) : Color(.systemFill))
+                            .foregroundStyle(hasUndoableStrokes ? Color.blue.opacity(0.85) : Color(.systemFill))
                     }
-                    .disabled(!canUndo)
-                    Text("Undo").font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(canUndo ? Color.blue.opacity(0.75) : Color(.tertiaryLabel))
+                    .disabled(!hasUndoableStrokes)
+                    Text(isFreeUndo ? "Undo" : "Undo 🪙")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(hasUndoableStrokes ? Color.blue.opacity(0.75) : Color(.tertiaryLabel))
                 }
                 .padding(.top, 8)
 
@@ -512,37 +535,30 @@ struct GameView: View {
         .padding(.vertical, 4)
     }
 
-    // ── Flying coin overlay (rendered over the canvas) ─────────────────────
+    // ── Flying coin overlay (single burst per type) ─────────────────────
 
     @State private var flyingCoins: [FlyingCoin] = []
 
     private var flyingCoinOverlay: some View {
         GeometryReader { geo in
             ForEach(flyingCoins) { coin in
-                CoinView(coin: coin, containerSize: geo.size)
+                CoinBurstView(coin: coin, containerSize: geo.size)
             }
         }
         .allowsHitTesting(false)
     }
 
-    private func spawnFlyingCoins(type: CoinType, count: Int, delay baseDelay: Double) {
-        let displayCount = min(count, 8)   // cap visual coins to avoid clutter
-        for i in 0..<displayCount {
-            let coin = FlyingCoin(type: type,
-                                  startX: CGFloat.random(in: 0.3...0.7),
-                                  startY: CGFloat.random(in: 0.4...0.6),
-                                  delay: baseDelay + Double(i) * 0.08)
-            DispatchQueue.main.asyncAfter(deadline: .now() + coin.delay) {
-                withAnimation(.easeInOut(duration: 0.9)) {
-                    flyingCoins.append(coin)
-                }
-                // Play clink sound
-                CoinSoundPlayer.playJingle()
+    private func spawnCoinBurst(type: CoinType, count: Int, delay: Double) {
+        let coin = FlyingCoin(type: type, count: count, delay: delay)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            flyingCoins.append(coin)
+            CoinSoundPlayer.playClink()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                CoinSoundPlayer.playLand()
             }
-            // Remove after animation completes
-            DispatchQueue.main.asyncAfter(deadline: .now() + coin.delay + 1.2) {
-                flyingCoins.removeAll { $0.id == coin.id }
-            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 1.6) {
+            flyingCoins.removeAll { $0.id == coin.id }
         }
     }
 
@@ -733,8 +749,34 @@ struct GameView: View {
 
     // ── Undo / Redo ────────────────────────────────────────────────────────
 
+    // ── Undo / Retry handlers ────────────────────────────────────────────
+
+    private func handleUndoTap() {
+        guard hasUndoableStrokes else { return }
+        if isFreeUndo {
+            performUndo()
+        } else {
+            // Paid undo — show confirmation
+            if UserSession.shared.silverCoins >= 1 {
+                showPaidUndoAlert = true
+            } else {
+                showPaidUndoAlert = true   // still show — alert text shows coin count
+            }
+        }
+    }
+
+    private func handleRestartTap() {
+        // If no strokes drawn yet, restart is free
+        if lineScores.isEmpty && redoStack.isEmpty { return }
+        if UserSession.shared.goldCoins >= 1 {
+            showRetryCostAlert = true
+        } else {
+            showRetryCostAlert = true   // still show — alert shows coin count
+        }
+    }
+
     private func performUndo() {
-        guard canUndo else { return }
+        guard hasUndoableStrokes else { return }
         let s = finishedStrokes.removeLast(); let sc = lineScores.removeLast()
         redoStack.append(StrokeRecord(stroke: s, score: sc.timeAdjustedScore))
         connectionIndex = max(0, connectionIndex - 1)
@@ -864,7 +906,7 @@ struct GameView: View {
         let g100 = scores.filter { $0 == 100 }.count * 5
         goldAwarded = g96 + g100
 
-        var delay: Double = 0.3
+        var delay: Double = 0.5
 
         if copperAwarded > 0 {
             let d = delay
@@ -872,8 +914,8 @@ struct GameView: View {
                 withAnimation(.spring(response: 0.4)) { showCopperAnim = true }
                 UserSession.shared.copperCoins += copperAwarded
             }
-            spawnFlyingCoins(type: .copper, count: copperAwarded, delay: delay)
-            delay += 1.0
+            spawnCoinBurst(type: .copper, count: copperAwarded, delay: delay)
+            delay += 1.4
         }
 
         if silverAwarded > 0 {
@@ -882,8 +924,8 @@ struct GameView: View {
                 withAnimation(.spring(response: 0.4)) { showSilverAnim = true }
                 UserSession.shared.silverCoins += silverAwarded
             }
-            spawnFlyingCoins(type: .silver, count: silverAwarded, delay: delay)
-            delay += 1.0
+            spawnCoinBurst(type: .silver, count: silverAwarded, delay: delay)
+            delay += 1.4
         }
 
         if goldAwarded > 0 {
@@ -894,12 +936,12 @@ struct GameView: View {
                 let perfect = scores.filter { $0 == 100 }.count * 5
                 UserSession.shared.goldCoins += g96only + perfect
             }
-            spawnFlyingCoins(type: .gold, count: goldAwarded, delay: delay)
-            delay += 1.0
+            spawnCoinBurst(type: .gold, count: goldAwarded, delay: delay)
+            delay += 1.4
         }
 
         // Clear text animations after all done
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 1.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 2.0) {
             withAnimation(.easeOut(duration: 0.5)) {
                 showCopperAnim = false; showSilverAnim = false; showGoldAnim = false
             }
@@ -979,102 +1021,69 @@ enum CoinType {
 struct FlyingCoin: Identifiable {
     let id = UUID()
     let type: CoinType
-    let startX: CGFloat    // 0...1 fraction of container width
-    let startY: CGFloat    // 0...1 fraction of container height
+    let count: Int       // total coins awarded (shown as "+275")
     let delay: Double
 }
 
-struct CoinView: View {
+/// One celebratory burst per coin type: a single large coin appears at
+/// screen center, spins, shows "+count", then flies into the chest.
+struct CoinBurstView: View {
     let coin: FlyingCoin
     let containerSize: CGSize
 
-    @State private var phase: Int = 0  // 0 = start, 1 = peak, 2 = landed
+    @State private var phase: Int = 0  // 0=hidden, 1=burst at center, 2=fly to chest
 
-    private var startPos: CGPoint {
-        CGPoint(x: containerSize.width * coin.startX,
-                y: containerSize.height * coin.startY)
+    private var centerPos: CGPoint {
+        CGPoint(x: containerSize.width / 2, y: containerSize.height / 2)
     }
-
-    // Chest is top-left corner area
-    private var chestPos: CGPoint {
-        CGPoint(x: 30, y: -10)
-    }
-
-    // Peak of the arc (high into the air)
-    private var peakPos: CGPoint {
-        CGPoint(x: (startPos.x + chestPos.x) / 2 + CGFloat.random(in: -30...30),
-                y: min(startPos.y, chestPos.y) - 120 - CGFloat.random(in: 0...60))
-    }
-
-    private var currentPos: CGPoint {
-        switch phase {
-        case 0: return startPos
-        case 1: return peakPos
-        default: return chestPos
-        }
-    }
-
-    private var currentScale: CGFloat {
-        switch phase {
-        case 0: return 0.3
-        case 1: return 1.2
-        default: return 0.4
-        }
-    }
-
-    private var currentOpacity: Double {
-        switch phase {
-        case 0: return 0.0
-        case 1: return 1.0
-        default: return 0.6
-        }
-    }
+    private var chestPos: CGPoint { CGPoint(x: 30, y: -10) }
 
     var body: some View {
         ZStack {
-            // Coin shadow (3D effect)
-            Ellipse()
-                .fill(coin.type.color.opacity(0.3))
-                .frame(width: 22, height: 8)
-                .offset(y: 10)
-                .scaleEffect(phase == 1 ? 1.5 : 0.5)
+            // Glow ring during burst
+            if phase == 1 {
+                Circle()
+                    .fill(coin.type.color.opacity(0.25))
+                    .frame(width: 80, height: 80)
+                    .blur(radius: 12)
+            }
 
-            // Coin body — ellipse that squishes horizontally for 3D spin effect
+            // Coin disc
             ZStack {
-                Ellipse()
+                Circle()
                     .fill(
                         LinearGradient(
-                            colors: [coin.type.highlight, coin.type.color, coin.type.color.opacity(0.7)],
+                            colors: [coin.type.highlight, coin.type.color, coin.type.color.opacity(0.6)],
                             startPoint: .topLeading, endPoint: .bottomTrailing)
                     )
-                    .frame(width: 20, height: 20)
-                    .overlay(
-                        Ellipse()
-                            .stroke(coin.type.color.opacity(0.5), lineWidth: 1.5)
-                    )
+                    .frame(width: 44, height: 44)
+                    .overlay(Circle().stroke(coin.type.highlight.opacity(0.6), lineWidth: 2))
+                    .shadow(color: coin.type.color.opacity(phase == 1 ? 0.6 : 0.2),
+                            radius: phase == 1 ? 12 : 3)
 
-                // Inner shine
                 Circle()
-                    .fill(coin.type.highlight.opacity(0.5))
-                    .frame(width: 6, height: 6)
-                    .offset(x: -3, y: -3)
+                    .fill(coin.type.highlight.opacity(0.35))
+                    .frame(width: 14, height: 14)
             }
-            .scaleEffect(x: phase == 1 ? 1.0 : 0.6, y: 1.0)   // horizontal squish = spin
-            .rotation3DEffect(.degrees(phase == 1 ? 360 : 0), axis: (x: 0, y: 1, z: 0))
+            .rotation3DEffect(.degrees(phase >= 1 ? 720 : 0), axis: (x: 0.2, y: 1, z: 0))
+
+            // "+count" label
+            if phase == 1 {
+                Text("+\(coin.count)")
+                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .foregroundStyle(coin.type.color)
+                    .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
+                    .offset(y: 38)
+                    .transition(.scale.combined(with: .opacity))
+            }
         }
-        .scaleEffect(currentScale)
-        .opacity(currentOpacity)
-        .position(currentPos)
+        .scaleEffect(phase == 0 ? 0.1 : phase == 1 ? 1.3 : 0.25)
+        .opacity(phase == 0 ? 0 : phase == 1 ? 1.0 : 0.5)
+        .position(phase <= 1 ? centerPos : chestPos)
         .onAppear {
-            // Phase 1: fly up to peak
-            withAnimation(.easeOut(duration: 0.4)) {
-                phase = 1
-            }
-            // Phase 2: fall into chest
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                withAnimation(.easeIn(duration: 0.45)) {
-                    phase = 2
-                }
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) { phase = 1 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                withAnimation(.easeIn(duration: 0.6)) { phase = 2 }
             }
         }
     }
@@ -1085,13 +1094,18 @@ struct CoinView: View {
 enum CoinSoundPlayer {
     private static var lastPlayTime: TimeInterval = 0
 
-    /// Play a short system click sound as a coin "clink".
-    /// Throttled so rapid coins don't overwhelm the audio.
-    static func playJingle() {
+    /// Short bright "clink" when coin bursts from center.
+    static func playClink() {
         let now = ProcessInfo.processInfo.systemUptime
-        guard now - lastPlayTime > 0.06 else { return }
+        guard now - lastPlayTime > 0.08 else { return }
         lastPlayTime = now
-        // System sound 1057 = short metallic "tink" (keyboard click variant)
+        // 1057 = short metallic tink
         AudioServicesPlaySystemSound(1057)
+    }
+
+    /// Softer "thud" when coin lands in chest.
+    static func playLand() {
+        // 1306 = subtle tap (key press)
+        AudioServicesPlaySystemSound(1306)
     }
 }
