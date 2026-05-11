@@ -39,8 +39,8 @@ struct MainMenuView: View {
                         .frame(width: 110, height: 110)
                     }
 
-                    Text("LineUp")
-                        .font(.system(size: 42, weight: .black, design: .rounded))
+                    Text("ConnectDaDots")
+                        .font(.system(size: 34, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
 
                     HStack(spacing: 8) {

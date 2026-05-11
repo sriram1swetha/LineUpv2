@@ -25,7 +25,7 @@ struct RegistrationView: View {
                         .font(.system(size: 56))
                         .foregroundStyle(Color(hex: "e94560"))
 
-                    Text("Welcome to LineUp")
+                    Text("Welcome to ConnectDaDots")
                         .font(.system(size: 28, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
 

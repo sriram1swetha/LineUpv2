@@ -19,7 +19,7 @@ struct AppIconView: View {
             dot(at: CGPoint(x: 228, y: 172), color: Color(hex: "f5a623"), radius: 16)
             VStack {
                 Spacer()
-                Text("LineUp")
+                Text("ConnectDaDots")
                     .font(.system(size: 36, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.4), radius: 3, y: 2)
