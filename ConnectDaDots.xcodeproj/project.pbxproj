@@ -7,10 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		188F6C6B2FB15FA8003C2941 /* AppIcon_ConnectDaDots_Gem.png in Resources */ = {isa = PBXBuildFile; fileRef = 188F6C6A2FB15FA8003C2941 /* AppIcon_ConnectDaDots_Gem.png */; };
 		18A9E3EB2F8364E900D70FFF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 18A9E3EA2F8364E900D70FFF /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		188F6C6A2FB15FA8003C2941 /* AppIcon_ConnectDaDots_Gem.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon_ConnectDaDots_Gem.png; sourceTree = "<group>"; };
 		18A9E3AE2F83582F00D70FFF /* ConnectDaDots.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ConnectDaDots.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		18A9E3EA2F8364E900D70FFF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		18CD72D02FA22F51002FDCDF /* ConnectDaDots.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ConnectDaDots.entitlements; sourceTree = "<group>"; };
@@ -40,6 +42,7 @@
 			children = (
 				18CD72D02FA22F51002FDCDF /* ConnectDaDots.entitlements */,
 				18A9E3EA2F8364E900D70FFF /* Assets.xcassets */,
+				188F6C6A2FB15FA8003C2941 /* AppIcon_ConnectDaDots_Gem.png */,
 				18A9E3B02F83582F00D70FFF /* LineUp */,
 				18A9E3AF2F83582F00D70FFF /* Products */,
 			);
@@ -118,6 +121,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				18A9E3EB2F8364E900D70FFF /* Assets.xcassets in Resources */,
+				188F6C6B2FB15FA8003C2941 /* AppIcon_ConnectDaDots_Gem.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -263,10 +267,10 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = ConnectDaDots.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.1;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = Y654SVALPA;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = LineUp;
+				INFOPLIST_KEY_CFBundleDisplayName = ConnectDaDots;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.puzzle-games";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
@@ -302,10 +306,10 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = ConnectDaDots.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.1;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = Y654SVALPA;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = LineUp;
+				INFOPLIST_KEY_CFBundleDisplayName = ConnectDaDots;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.puzzle-games";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
