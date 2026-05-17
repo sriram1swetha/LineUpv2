@@ -296,4 +296,95 @@ class CloudKitManager: ObservableObject {
         privateDB     = nil
         setupContainer()
     }
+
+    // MARK: - Migrate scores (guest → Apple ID upgrade)
+
+    func migrateScores(from oldPlayerID: String, to newPlayerID: String,
+                       newDisplayName: String) {
+        guard isAvailable, let db = publicDB else { return }
+
+        let predicate = NSPredicate(format: "playerID == %@", oldPlayerID)
+        let query = CKQuery(recordType: "PlayerScore", predicate: predicate)
+        let operation = CKQueryOperation(query: query)
+        operation.resultsLimit = 500
+
+        var recordsToUpdate: [CKRecord] = []
+
+        operation.recordMatchedBlock = { _, result in
+            if case .success(let record) = result {
+                record["playerID"]    = newPlayerID    as CKRecordValue
+                record["displayName"] = newDisplayName as CKRecordValue
+                recordsToUpdate.append(record)
+            }
+        }
+
+        operation.queryResultBlock = { [weak self] _ in
+            guard !recordsToUpdate.isEmpty else { return }
+            let modifyOp = CKModifyRecordsOperation(recordsToSave: recordsToUpdate)
+            modifyOp.savePolicy = .changedKeys
+            modifyOp.modifyRecordsResultBlock = { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        self?.lastSubmitStatus = "Migrated \(recordsToUpdate.count) scores"
+                    case .failure(let error):
+                        self?.lastError = "migrateScores: \(error.localizedDescription)"
+                    }
+                }
+            }
+            db.add(modifyOp)
+        }
+
+        db.add(operation)
+    }
+
+    // MARK: - Delete all player data (account deletion)
+
+    func deleteAllPlayerData(playerID: String) {
+        guard isAvailable else { return }
+
+        // Delete scores from public database
+        if let db = publicDB {
+            let predicate = NSPredicate(format: "playerID == %@", playerID)
+            let query = CKQuery(recordType: "PlayerScore", predicate: predicate)
+            let operation = CKQueryOperation(query: query)
+            operation.resultsLimit = 500
+
+            var recordIDs: [CKRecord.ID] = []
+
+            operation.recordMatchedBlock = { _, result in
+                if case .success(let record) = result {
+                    recordIDs.append(record.recordID)
+                }
+            }
+
+            operation.queryResultBlock = { _ in
+                guard !recordIDs.isEmpty else { return }
+                let deleteOp = CKModifyRecordsOperation(recordsToSave: nil, recordIDsToDelete: recordIDs)
+                deleteOp.modifyRecordsResultBlock = { result in
+                    DispatchQueue.main.async {
+                        switch result {
+                        case .success:
+                            print("CloudKit: deleted \(recordIDs.count) scores")
+                        case .failure(let error):
+                            print("CloudKit deleteScores error: \(error.localizedDescription)")
+                        }
+                    }
+                }
+                db.add(deleteOp)
+            }
+
+            db.add(operation)
+        }
+
+        // Delete profile from private database
+        if let db = privateDB {
+            let recordID = CKRecord.ID(recordName: "PlayerProfile_v1")
+            db.delete(withRecordID: recordID) { _, error in
+                if let error {
+                    print("CloudKit deleteProfile error: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
 }

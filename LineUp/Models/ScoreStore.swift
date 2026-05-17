@@ -116,6 +116,9 @@ class ScoreStore: ObservableObject {
         UserDefaults.standard.removeObject(forKey: storageKey)
     }
 
+    /// Alias used by account deletion flow.
+    func deleteAll() { clearAll() }
+
     private func persist() {
         if let data = try? JSONEncoder().encode(results) {
             UserDefaults.standard.set(data, forKey: storageKey)

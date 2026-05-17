@@ -59,55 +59,40 @@ struct MainMenuView: View {
                     }
 
                     // Player badge
-                    if userSession.isGamer {
-                        HStack(spacing: 6) {
-                            Image(systemName: userSession.isAdmin ? "shield.fill" : "person.fill")
-                                .font(.caption)
-                            Text(userSession.displayName)
-                                .font(.caption.bold())
-                            Text(userSession.isAdmin ? "· Admin" : "· Gamer")
-                                .font(.caption).opacity(0.6)
-                        }
-                        .foregroundStyle(.white.opacity(0.7))
-                        .padding(.horizontal, 12).padding(.vertical, 5)
-                        .background(.white.opacity(0.1)).clipShape(Capsule())
+                    HStack(spacing: 6) {
+                        Image(systemName: userSession.isAdmin ? "shield.fill" :
+                              userSession.isAppleID ? "person.fill" : "person.fill.questionmark")
+                            .font(.caption)
+                        Text(userSession.displayName)
+                            .font(.caption.bold())
+                        Text(userSession.isAdmin ? "· Admin" :
+                             userSession.isAppleID ? "· Apple ID" : "· Guest")
+                            .font(.caption).opacity(0.6)
                     }
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(.horizontal, 12).padding(.vertical, 5)
+                    .background(.white.opacity(0.1)).clipShape(Capsule())
                 }
 
                 Spacer()
 
                 // Buttons
                 VStack(spacing: 14) {
-                    if userSession.isGamer {
-                        NavigationLink(destination: LevelSelectView()) {
-                            GlowButton(title: "Play", icon: "play.fill", isPrimary: true)
-                        }
-                        NavigationLink(destination: LeaderboardView()) {
-                            GlowButton(title: "Leaderboard", icon: "trophy.fill", isPrimary: false)
-                        }
-                        NavigationLink(destination: ScoreboardView()) {
-                            GlowButton(title: "My Scores", icon: "list.number", isPrimary: false)
-                        }
-                        NavigationLink(destination: SettingsView()) {
-                            GlowButton(title: "Settings", icon: "gearshape.fill", isPrimary: false)
-                        }
-                        if userSession.isAdmin {
-                            NavigationLink(destination: AdminVisualizerView()) {
-                                GlowButton(title: "Dot Visualizer", icon: "eye.circle", isPrimary: false)
-                            }
-                        }
-                        Button {
-                            userSession.logout()
-                        } label: {
-                            GlowButton(title: "Sign Out", icon: "rectangle.portrait.and.arrow.right", isPrimary: false)
-                        }
-                    } else {
-                        // Guest: can play Level 1 as intro
-                        NavigationLink(destination: LevelSelectView(guestIntroOnly: true)) {
-                            GlowButton(title: "Play Level 1", icon: "play.fill", isPrimary: true)
-                        }
-                        Button { userSession.hasCompletedIntro = true } label: {
-                            GlowButton(title: "Register to Play All Levels", icon: "person.badge.plus", isPrimary: false)
+                    NavigationLink(destination: LevelSelectView()) {
+                        GlowButton(title: "Play", icon: "play.fill", isPrimary: true)
+                    }
+                    NavigationLink(destination: LeaderboardView()) {
+                        GlowButton(title: "Leaderboard", icon: "trophy.fill", isPrimary: false)
+                    }
+                    NavigationLink(destination: ScoreboardView()) {
+                        GlowButton(title: "My Scores", icon: "list.number", isPrimary: false)
+                    }
+                    NavigationLink(destination: SettingsView()) {
+                        GlowButton(title: "Settings", icon: "gearshape.fill", isPrimary: false)
+                    }
+                    if userSession.isAdmin {
+                        NavigationLink(destination: AdminVisualizerView()) {
+                            GlowButton(title: "Dot Visualizer", icon: "eye.circle", isPrimary: false)
                         }
                     }
                 }

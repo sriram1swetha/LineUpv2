@@ -4,8 +4,8 @@ struct SettingsView: View {
     @EnvironmentObject var settings: GameSettings
     @EnvironmentObject var userSession: UserSession
     @ObservedObject private var audio = AudioManager.shared
-    @State private var showResetConfirm = false
-    @State private var showLogoutConfirm = false
+    @State private var showDeactivateConfirm = false
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         Form {
@@ -26,42 +26,40 @@ struct SettingsView: View {
                             Text(userSession.playerEmail).font(.caption).foregroundStyle(.secondary)
                         }
                         HStack(spacing: 8) {
-                            if !userSession.appleUserID.isEmpty {
+                            if userSession.isAppleID {
                                 Label("Apple ID", systemImage: "checkmark.seal.fill")
                                     .font(.caption2).foregroundStyle(.green)
+                            } else if userSession.isGuest {
+                                Label("Guest", systemImage: "person.fill.questionmark")
+                                    .font(.caption2).foregroundStyle(.orange)
                             }
-                            Text(userSession.role == .admin ? "Admin" : "Gamer")
-                                .font(.caption2.bold())
-                                .padding(.horizontal, 8).padding(.vertical, 2)
-                                .background(userSession.isAdmin ? Color.orange.opacity(0.15) : Color.blue.opacity(0.15))
-                                .foregroundStyle(userSession.isAdmin ? .orange : .blue)
-                                .clipShape(Capsule())
+                            if userSession.isAdmin {
+                                Text("Admin")
+                                    .font(.caption2.bold())
+                                    .padding(.horizontal, 8).padding(.vertical, 2)
+                                    .background(Color.orange.opacity(0.15))
+                                    .foregroundStyle(.orange)
+                                    .clipShape(Capsule())
+                            }
                         }
                     }
+                }
+
+                // Upgrade to Apple ID (guests only)
+                if userSession.isGuest {
+                    UpgradeToAppleIDButton()
                 }
 
                 if userSession.profileSyncedToCloud {
                     Label("Synced to iCloud", systemImage: "checkmark.icloud.fill")
                         .font(.caption).foregroundStyle(.green)
-                } else {
+                } else if userSession.isAppleID {
                     Button {
                         userSession.syncProfileToCloud()
                     } label: {
                         Label("Sync to iCloud", systemImage: "arrow.triangle.2.circlepath.icloud")
                             .font(.caption)
                     }
-                }
-
-                Button(role: .destructive) {
-                    showLogoutConfirm = true
-                } label: {
-                    Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                }
-                .confirmationDialog("Sign out?", isPresented: $showLogoutConfirm) {
-                    Button("Sign Out", role: .destructive) { userSession.logout() }
-                    Button("Cancel", role: .cancel) { }
-                } message: {
-                    Text("You'll return to the sign-in screen. Your local scores are kept.")
                 }
             } header: {
                 Label("Profile", systemImage: "person.circle")
@@ -350,17 +348,44 @@ struct SettingsView: View {
                 Text("Background tracks loop one after the other. Use ◀︎ ▶︎ to skip between tracks.")
             }
 
-            // ── Data ──────────────────────────────────────────────────────
+            // ── Account ───────────────────────────────────────────────────
             Section {
-                Button(role: .destructive) { showResetConfirm = true } label: {
-                    Label("Reset All Scores & Unlock Progress", systemImage: "trash")
+                Button {
+                    userSession.signOut()
+                } label: {
+                    Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
                 }
-                .disabled(!userSession.isAdmin)
+
+                Button(role: .destructive) {
+                    showDeactivateConfirm = true
+                } label: {
+                    Label("Deactivate Account (90-day hold)", systemImage: "pause.circle")
+                }
+                .confirmationDialog("Deactivate account?", isPresented: $showDeactivateConfirm) {
+                    Button("Deactivate", role: .destructive) {
+                        userSession.deactivateAccount()
+                    }
+                    Button("Cancel", role: .cancel) { }
+                } message: {
+                    Text("Your account will be on hold for 90 days. You can reactivate anytime during this period. After 90 days it will be permanently deleted.")
+                }
+
+                Button(role: .destructive) {
+                    showDeleteConfirm = true
+                } label: {
+                    Label("Delete Account Permanently", systemImage: "trash")
+                }
+                .confirmationDialog("Delete account permanently?", isPresented: $showDeleteConfirm) {
+                    Button("Delete Everything", role: .destructive) {
+                        userSession.deleteAccount()
+                    }
+                    Button("Cancel", role: .cancel) { }
+                } message: {
+                    Text("This will permanently delete your profile, all scores, leaderboard positions, coins, and local data. This action cannot be undone.")
+                }
             } header: {
-                Label("Data", systemImage: "externaldrive")
+                Label("Account", systemImage: "person.crop.circle.badge.minus")
             }
-            .disabled(!userSession.isAdmin)
-            .opacity(userSession.isAdmin ? 1.0 : 0.45)
 
             // ── App Feedback ──────────────────────────────────────────────
             Section {
@@ -404,9 +429,36 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
-        .confirmationDialog("Clear all scores?", isPresented: $showResetConfirm, titleVisibility: .visible) {
-            Button("Clear All", role: .destructive) { ScoreStore.shared.clearAll() }
-            Button("Cancel", role: .cancel) {}
-        } message: { Text("This resets all scores and locks all levels. Cannot be undone.") }
+    }
+}
+
+// ── Upgrade to Apple ID button (for guests) ───────────────────────────────────
+
+import AuthenticationServices
+
+struct UpgradeToAppleIDButton: View {
+    @EnvironmentObject var userSession: UserSession
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Upgrade to Apple ID for cloud sync & leaderboard")
+                .font(.caption).foregroundStyle(.secondary)
+
+            SignInWithAppleButton(.signIn) { request in
+                request.requestedScopes = [.fullName, .email]
+            } onCompletion: { result in
+                switch result {
+                case .success(let auth):
+                    guard let credential = auth.credential as? ASAuthorizationAppleIDCredential else { return }
+                    userSession.upgradeToAppleID(credential: credential)
+                case .failure:
+                    break
+                }
+            }
+            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+            .frame(height: 44)
+            .cornerRadius(10)
+        }
     }
 }

@@ -95,7 +95,6 @@ struct GameView: View {
     @State private var copperAwarded  = 0
     @State private var silverAwarded  = 0
     @State private var goldAwarded    = 0
-    @State private var showGuestRegisterPrompt = false
     @State private var showPaidUndoAlert = false
     @State private var showRetryCostAlert = false
 
@@ -127,14 +126,6 @@ struct GameView: View {
             withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
                 pulseOn = true
             }
-        }
-        .alert("Ready for more?", isPresented: $showGuestRegisterPrompt) {
-            Button("Register Now") {
-                UserSession.shared.hasCompletedIntro = true
-            }
-            Button("Keep Playing", role: .cancel) { }
-        } message: {
-            Text("Sign in to unlock all levels, save scores to the leaderboard, and earn coins across sessions!")
         }
         .alert("Extra Undo", isPresented: $showPaidUndoAlert) {
             Button("Spend 1 Silver Coin") {
@@ -870,7 +861,7 @@ struct GameView: View {
         guideFlashOpacity = 0
         showCopperAnim = false; showSilverAnim = false; showGoldAnim = false
         copperAwarded = 0; silverAwarded = 0; goldAwarded = 0
-        flyingCoins = []; showGuestRegisterPrompt = false
+        flyingCoins = []
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { flashGuide() }
     }
 
@@ -885,14 +876,12 @@ struct GameView: View {
             totalTime: elapsedSeconds, undosUsed: totalUndosUsed, date: Date()))
         resultSaved = true
 
-        // Submit to CloudKit leaderboard
-        if UserSession.shared.isGamer {
-            CloudKitManager.shared.submitScore(
-                playerID: UserSession.shared.appleUserID,
-                displayName: UserSession.shared.displayName,
-                level: currentLevel, game: currentGame,
-                score: totalScore, totalTime: elapsedSeconds)
-        }
+        // Submit to CloudKit leaderboard (all players, including guests)
+        CloudKitManager.shared.submitScore(
+            playerID: UserSession.shared.playerID,
+            displayName: UserSession.shared.displayName,
+            level: currentLevel, game: currentGame,
+            score: totalScore, totalTime: elapsedSeconds)
 
         // Award coins with staggered animations
         awardCoinsAnimated(scores: scores)
@@ -944,13 +933,6 @@ struct GameView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay + 2.0) {
             withAnimation(.easeOut(duration: 0.5)) {
                 showCopperAnim = false; showSilverAnim = false; showGoldAnim = false
-            }
-        }
-
-        // Show registration prompt for guests after Level 1 completion
-        if UserSession.shared.isGuest || UserSession.shared.appleUserID.isEmpty {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay + 2.0) {
-                showGuestRegisterPrompt = true
             }
         }
     }
