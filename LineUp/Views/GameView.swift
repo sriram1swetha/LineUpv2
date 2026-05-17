@@ -3,7 +3,8 @@ import AudioToolbox
 
 private enum DrawPhase { case idle, drawing, reviewing, complete }
 private struct StrokeRecord { let stroke: FinishedStroke; let score: Int }
-private let topArrowReserved: CGFloat = 68
+// Buttons are now in their own navStrip, not overlaid on the canvas.
+private let topArrowReserved: CGFloat = 0
 
 struct GameView: View {
     let initialLevel: Int
@@ -24,7 +25,7 @@ struct GameView: View {
     @State private var finishedStrokes: [FinishedStroke] = []
     @State private var lineScores: [LineScore] = []
     @State private var redoStack: [StrokeRecord] = []
-    @State private var undosThisSegment = 0    // resets each new connection
+    @State private var undosThisSegment = 0
     @State private var totalUndosUsed = 0
 
     @State private var flashScore: Int? = nil
@@ -42,9 +43,31 @@ struct GameView: View {
     @State private var idealOpacity: Double = 0
     @State private var lastScoredConnIndex: Int? = nil
 
-    // Guide flash — briefly highlights the expected path as a solid line
-    // before fading to the dashed guide.
+    // Guide flash — briefly highlights the expected path before fading to dashed guide
     @State private var guideFlashOpacity: Double = 0
+
+    // Coin animations
+    @State private var showCopperAnim = false
+    @State private var showSilverAnim = false
+    @State private var showGoldAnim   = false
+    @State private var copperAwarded  = 0
+    @State private var silverAwarded  = 0
+    @State private var goldAwarded    = 0
+    @State private var showPaidUndoAlert = false
+    @State private var showRetryCostAlert = false
+
+    // Per-game coins cache — persists when navigating away and back to the same game
+    @State private var gameCoinsCache: [String: (copper: Int, silver: Int, gold: Int)] = [:]
+
+    // Game objective overlay — shown briefly when a new game loads
+    @State private var showGameObjective = true
+    @State private var objectiveOpacity: Double = 1.0
+
+    // Zoom / pan
+    @State private var zoomScale: CGFloat = 1.0
+    @State private var panOffset: CGSize = .zero
+    @State private var panDragStart: CGPoint? = nil
+    @State private var isPanDrag = false
 
     init(level: Int, game: Int, levelType: LevelType) {
         self.initialLevel = level; self.initialGame = game; self.initialLevelType = levelType
@@ -72,7 +95,6 @@ struct GameView: View {
         guard connectionIndex < config.connections.count else { return nil }
         return config.connections[connectionIndex]
     }
-    // Undo: first undo per segment is free, additional cost 1 silver each
     private var hasUndoableStrokes: Bool {
         !lineScores.isEmpty && (phase == .idle || phase == .complete)
     }
@@ -88,22 +110,31 @@ struct GameView: View {
         LevelType(rawValue: currentLevel) ?? currentLevelType
     }
 
-    // ── Coin animation state ────────────────────────────────────────────────
-    @State private var showCopperAnim = false
-    @State private var showSilverAnim = false
-    @State private var showGoldAnim   = false
-    @State private var copperAwarded  = 0
-    @State private var silverAwarded  = 0
-    @State private var goldAwarded    = 0
-    @State private var showPaidUndoAlert = false
-    @State private var showRetryCostAlert = false
-
     // ── Body ───────────────────────────────────────────────────────────────
+    // Region layout (top → bottom):
+    //   1. Navigation bar  — back arrow, Lv N · Name, Restart, Home   (system toolbar)
+    //   2. topStrip        — Chest / coin totals,  connection hint,  segment pips
+    //   3. navStrip        — Prev Game,  Undo,  Redo,  Next Game
+    //   4. canvas          — main drawing area (zoom + pan supported)
+    //   5. footerBar       — Score · Accuracy · Time · Coins Earned   (fixed height)
 
     var body: some View {
         VStack(spacing: 0) {
             topStrip
-            ZStack { canvasLayer; topArrows; flyingCoinOverlay }
+            navStrip
+            ZStack {
+                canvasLayer
+                gameObjectiveOverlay
+                flyingCoinOverlay
+            }
+            // Coin award banner floats above the footer without shifting it
+            .overlay(alignment: .bottom) {
+                if showCopperAnim || showSilverAnim || showGoldAnim {
+                    coinAnimationBanner
+                        .padding(.bottom, 10)
+                        .transition(.opacity)
+                }
+            }
             footerBar
         }
         .navigationTitle("Lv \(currentLevel) · \(config.shapeName)")
@@ -142,6 +173,8 @@ struct GameView: View {
             Button("Spend 1 Gold Coin") {
                 if UserSession.shared.goldCoins >= 1 {
                     UserSession.shared.goldCoins -= 1
+                    // Clear this game's cached coins so the footer resets on retry
+                    gameCoinsCache.removeValue(forKey: "\(currentLevel)-\(currentGame)")
                     restartGame()
                 }
             }
@@ -151,11 +184,11 @@ struct GameView: View {
         }
     }
 
-    // ── Top strip: Chest + connection hint + pips ──────────────────────────
+    // ── Region 2 — Chest + connection hint + segment pips ─────────────────
 
     private var topStrip: some View {
         HStack(spacing: 10) {
-            // Chest icon with coin counts
+            // Chest icon with running coin totals
             HStack(spacing: 4) {
                 Image(systemName: "shippingbox.fill")
                     .font(.title3).foregroundStyle(Color(hex: "f5a623"))
@@ -188,7 +221,7 @@ struct GameView: View {
 
             Spacer()
 
-            // Score pips
+            // Segment score pips
             HStack(spacing: 5) {
                 ForEach(0..<config.connections.count, id: \.self) { i in
                     RoundedRectangle(cornerRadius: 3).fill(pipColor(index: i))
@@ -200,7 +233,57 @@ struct GameView: View {
         .background(Color(.secondarySystemBackground))
     }
 
-    // ── Canvas ─────────────────────────────────────────────────────────────
+    // ── Region 3 — Prev Game · Undo · Redo · Next Game ────────────────────
+
+    private var navStrip: some View {
+        HStack(spacing: 0) {
+            navButton(icon: "chevron.left.circle.fill",
+                      label: "Prev",
+                      enabled: hasPrev && phase != .drawing && phase != .reviewing,
+                      action: { navigatePrev() })
+
+            Spacer()
+
+            navButton(icon: "arrow.uturn.backward.circle.fill",
+                      label: isFreeUndo ? "Undo" : "Undo 🪙",
+                      enabled: hasUndoableStrokes,
+                      action: { handleUndoTap() })
+
+            Spacer().frame(width: 14)
+
+            navButton(icon: "arrow.uturn.forward.circle.fill",
+                      label: "Redo",
+                      enabled: canRedo,
+                      action: { performRedo() })
+
+            Spacer()
+
+            navButton(icon: "chevron.right.circle.fill",
+                      label: currentGameHasHistory ? "Next" : "Play first",
+                      enabled: hasNext && phase != .drawing && phase != .reviewing,
+                      action: { navigateNext() })
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color(.tertiarySystemBackground))
+    }
+
+    @ViewBuilder
+    private func navButton(icon: String, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Image(systemName: icon)
+                    .font(.system(size: 28))
+                    .foregroundStyle(enabled ? Color.blue.opacity(0.85) : Color(.systemFill))
+                Text(label)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(enabled ? Color.blue.opacity(0.75) : Color(.tertiaryLabel))
+            }
+        }
+        .disabled(!enabled)
+    }
+
+    // ── Region 4 — Canvas ──────────────────────────────────────────────────
 
     @ViewBuilder
     private var canvasLayer: some View {
@@ -208,18 +291,14 @@ struct GameView: View {
             ZStack(alignment: .top) {
                 Color(.systemBackground)
 
-                // Guide (straight or arc) — always shown for every level.
+                // Dashed guide (current connection)
                 if let conn = currentConn, phase != .complete {
-                    // Solid "preview flash" — briefly highlights the expected
-                    // path so the gamer sees exactly what to draw.
                     idealHighlight(connectionIndex: connectionIndex)
                         .opacity(guideFlashOpacity)
-
-                    // Permanent dashed guide line
                     guideShape(conn: conn)
                 }
 
-                // Faint circle outline hint for classic full-circle curve games.
+                // Faint circle outline hint for classic full-circle curve games
                 if currentLevelType.isCurve,
                    config.perConnectionArcs == nil,
                    let center = config.circleCenter,
@@ -230,7 +309,7 @@ struct GameView: View {
                         .position(center)
                 }
 
-                // Maze walls — thick red/brown lines the player must avoid.
+                // Maze walls
                 if let walls = config.walls {
                     ForEach(0..<walls.count, id: \.self) { i in
                         Path { p in
@@ -242,49 +321,131 @@ struct GameView: View {
                     }
                 }
 
-                // Ideal highlight (appears after each scored stroke)
+                // Ideal highlight (appears briefly after each scored stroke)
                 if showIdeal, let idx = lastScoredConnIndex,
                    idx < config.connections.count {
                     idealHighlight(connectionIndex: idx).opacity(idealOpacity)
                 }
 
-                // On completion: show ALL ideal paths so the player can
-                // compare their drawn lines with the expected paths.
+                // On completion: show all ideal paths for comparison
                 if phase == .complete {
                     ForEach(0..<config.connections.count, id: \.self) { idx in
                         idealHighlight(connectionIndex: idx).opacity(0.4)
                     }
                 }
 
-                // Finished strokes
                 ForEach(finishedStrokes) { stroke in
                     StrokePath(points: stroke.path)
                         .stroke(scoreColor(stroke.score).opacity(0.75), lineWidth: lineW)
                 }
 
-                // Live stroke
                 if !activePath.isEmpty {
                     StrokePath(points: activePath).stroke(Color.blue, lineWidth: lineW)
                 }
 
-                // Dots
                 ForEach(0..<config.dots.count, id: \.self) { i in dotView(index: i) }
 
-                // Score flash
                 if let s = flashScore {
                     scoreFlashView(score: s)
                         .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, topArrowReserved + 8)
+                        .padding(.top, 8)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
+
+                // Zoom indicator (shown when zoomed in)
+                if zoomScale > 1.05 {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            Button {
+                                withAnimation(.spring(response: 0.35)) {
+                                    zoomScale = 1.0; panOffset = .zero
+                                }
+                            } label: {
+                                Label(String(format: "%.1f×", zoomScale), systemImage: "arrow.up.left.and.down.right.magnifyingglass")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .background(.regularMaterial, in: Capsule())
+                            }
+                            .padding(10)
+                        }
+                    }
+                }
             }
+            .scaleEffect(zoomScale, anchor: .center)
+            .offset(panOffset)
             .contentShape(Rectangle())
             .gesture(drawGesture)
+            .simultaneousGesture(
+                MagnificationGesture()
+                    .onChanged { value in
+                        zoomScale = max(1.0, min(4.0, value))
+                    }
+                    .onEnded { value in
+                        withAnimation(.spring(response: 0.3)) {
+                            zoomScale = max(1.0, min(4.0, value))
+                            if zoomScale < 1.05 { zoomScale = 1.0; panOffset = .zero }
+                        }
+                    }
+            )
             .onAppear {
                 canvasSize = geo.size
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { flashGuide() }
             }
             .onChange(of: geo.size) { canvasSize = $0 }
+        }
+    }
+
+    // ── Game objective overlay — shown at the start of each new game ───────
+
+    @ViewBuilder
+    private var gameObjectiveOverlay: some View {
+        if showGameObjective {
+            ZStack {
+                Color.black.opacity(0.55)
+                VStack(spacing: 14) {
+                    Text(config.shapeName)
+                        .font(.system(size: 38, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
+                    Text(gameObjectiveText)
+                        .font(.title3.bold())
+                        .foregroundStyle(.white.opacity(0.9))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                    Text("Tap to start")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.45))
+                        .padding(.top, 2)
+                }
+            }
+            .opacity(objectiveOpacity)
+            .onTapGesture { dismissObjective() }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    dismissObjective()
+                }
+            }
+        }
+    }
+
+    private var gameObjectiveText: String {
+        if currentLevelType.isMaze {
+            return "Navigate from dot to dot\nwithout crossing the walls"
+        } else if currentLevelType.isCurve {
+            return "Trace the curved arc\nbetween each dot"
+        } else {
+            return "Draw straight lines\nbetween each dot"
+        }
+    }
+
+    private func dismissObjective() {
+        guard showGameObjective else { return }
+        withAnimation(.easeOut(duration: 0.35)) { objectiveOpacity = 0 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            showGameObjective = false
+            objectiveOpacity = 1.0
         }
     }
 
@@ -325,79 +486,6 @@ struct GameView: View {
         }
     }
 
-    // ── Top corner arrows ──────────────────────────────────────────────────
-
-    @ViewBuilder
-    private var topArrows: some View {
-        VStack {
-            HStack(alignment: .top, spacing: 0) {
-
-                // ◀ Previous game
-                VStack(spacing: 2) {
-                    Button { navigatePrev() } label: {
-                        Image(systemName: "chevron.left.circle.fill")
-                            .font(.system(size: 34))
-                            .foregroundStyle(hasPrev && phase != .drawing && phase != .reviewing
-                                ? Color.blue.opacity(0.85) : Color(.systemFill))
-                    }
-                    .disabled(!hasPrev || phase == .drawing || phase == .reviewing)
-                    Text("Prev").font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Color(.tertiaryLabel))
-                }
-                .padding(.leading, 10).padding(.top, 8)
-
-                Spacer()
-
-                // ↶ Undo — first per segment is free, extras cost 1 silver
-                VStack(spacing: 2) {
-                    Button { handleUndoTap() } label: {
-                        Image(systemName: "arrow.uturn.backward.circle.fill")
-                            .font(.system(size: 34))
-                            .foregroundStyle(hasUndoableStrokes ? Color.blue.opacity(0.85) : Color(.systemFill))
-                    }
-                    .disabled(!hasUndoableStrokes)
-                    Text(isFreeUndo ? "Undo" : "Undo 🪙")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(hasUndoableStrokes ? Color.blue.opacity(0.75) : Color(.tertiaryLabel))
-                }
-                .padding(.top, 8)
-
-                Spacer().frame(width: 8)
-
-                // ↷ Redo
-                VStack(spacing: 2) {
-                    Button { performRedo() } label: {
-                        Image(systemName: "arrow.uturn.forward.circle.fill")
-                            .font(.system(size: 34))
-                            .foregroundStyle(canRedo ? Color.blue.opacity(0.85) : Color(.systemFill))
-                    }
-                    .disabled(!canRedo)
-                    Text("Redo").font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(canRedo ? Color.blue.opacity(0.75) : Color(.tertiaryLabel))
-                }
-                .padding(.top, 8)
-
-                Spacer()
-
-                // ▶ Next game
-                VStack(spacing: 2) {
-                    Button { navigateNext() } label: {
-                        Image(systemName: "chevron.right.circle.fill")
-                            .font(.system(size: 34))
-                            .foregroundStyle(hasNext && phase != .drawing && phase != .reviewing
-                                ? Color.blue.opacity(0.85) : Color(.systemFill))
-                    }
-                    .disabled(!hasNext || phase == .drawing || phase == .reviewing)
-                    Text(currentGameHasHistory ? "Next" : "Play first")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Color(.tertiaryLabel))
-                }
-                .padding(.trailing, 10).padding(.top, 8)
-            }
-            Spacer()
-        }
-    }
-
     // ── Dots ───────────────────────────────────────────────────────────────
 
     @ViewBuilder
@@ -435,68 +523,76 @@ struct GameView: View {
         .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
     }
 
-    // ── Footer ─────────────────────────────────────────────────────────────
+    // ── Region 5 — Footer: Score · Accuracy · Time · Coins Earned ─────────
+    // Fixed height. Coin animation banner floats ABOVE this strip as an overlay.
 
     private var footerBar: some View {
-        VStack(spacing: 4) {
-            // Coin animation overlays
-            if showCopperAnim || showSilverAnim || showGoldAnim {
-                coinAnimationBanner
+        HStack(spacing: 0) {
+            footerCell(label: "Score", value: "\(totalScore)/\(maxScore)")
+
+            Divider().frame(height: 30)
+
+            VStack(spacing: 2) {
+                Text("Accuracy").font(.system(size: 9)).foregroundStyle(.secondary)
+                Text(maxScore > 0 ? "\(totalScore * 100 / maxScore)%" : "—")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(scoreColor(maxScore > 0 ? totalScore * 100 / maxScore : 0))
             }
+            .frame(maxWidth: .infinity)
 
-            HStack(spacing: 12) {
-                // Score
-                VStack(spacing: 1) {
-                    Text("Score").font(.system(size: 9)).foregroundStyle(.secondary)
-                    Text("\(totalScore)/\(maxScore)")
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                }
+            Divider().frame(height: 30)
 
-                // Percentage
-                VStack(spacing: 1) {
-                    Text("Accuracy").font(.system(size: 9)).foregroundStyle(.secondary)
-                    Text(maxScore > 0 ? "\(totalScore * 100 / maxScore)%" : "—")
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundStyle(scoreColor(maxScore > 0 ? totalScore * 100 / maxScore : 0))
-                }
+            footerCell(label: "Time",
+                       value: elapsedSeconds > 0 ? String(format: "%.1fs", elapsedSeconds) : "—")
 
-                // Time
-                VStack(spacing: 1) {
-                    Text("Time").font(.system(size: 9)).foregroundStyle(.secondary)
-                    Text(elapsedSeconds > 0 ? String(format: "%.1fs", elapsedSeconds) : "—")
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                }
+            Divider().frame(height: 30)
 
-                Spacer()
-
-                // Status + hint
-                if phase == .complete {
-                    Label("Complete", systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 11, weight: .bold)).foregroundStyle(.green)
-                } else {
-                    Text(footerHint)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+            // Coins earned for the current game — persists when navigating away and back
+            VStack(spacing: 2) {
+                Text("Earned").font(.system(size: 9)).foregroundStyle(.secondary)
+                coinsEarnedRow
             }
-
-            if totalUndosUsed > 0 {
-                Text("\(totalUndosUsed) undo\(totalUndosUsed == 1 ? "" : "s") used")
-                    .font(.system(size: 9))
-                    .foregroundStyle(Color(.tertiaryLabel))
-            }
+            .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .frame(height: 56).frame(maxWidth: .infinity)
+        .frame(height: 54)
+        .frame(maxWidth: .infinity)
         .background(Color(.secondarySystemBackground))
     }
 
-    // ── Coin animation banner ─────────────────────────────────────────────
+    @ViewBuilder
+    private func footerCell(label: String, value: String) -> some View {
+        VStack(spacing: 2) {
+            Text(label).font(.system(size: 9)).foregroundStyle(.secondary)
+            Text(value).font(.system(size: 13, weight: .bold, design: .monospaced))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var coinsEarnedRow: some View {
+        let earned = gameCoinsCache["\(currentLevel)-\(currentGame)"]
+        if let e = earned, e.copper > 0 || e.silver > 0 || e.gold > 0 {
+            HStack(spacing: 4) {
+                if e.copper > 0 { coinBadge(count: e.copper, color: Color(hex: "CD7F32")) }
+                if e.silver > 0 { coinBadge(count: e.silver, color: Color(.systemGray3)) }
+                if e.gold   > 0 { coinBadge(count: e.gold,   color: Color(hex: "FFD700")) }
+            }
+        } else {
+            Text("—").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func coinBadge(count: Int, color: Color) -> some View {
+        HStack(spacing: 2) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text("\(count)").font(.system(size: 10, weight: .bold)).foregroundStyle(color)
+        }
+    }
+
+    // ── Coin animation banner — floats above footer, doesn't shift layout ──
 
     private var coinAnimationBanner: some View {
-        // Summary text showing what was awarded (appears in footer)
         HStack(spacing: 16) {
             if showCopperAnim && copperAwarded > 0 {
                 HStack(spacing: 4) {
@@ -523,10 +619,12 @@ struct GameView: View {
                 .transition(.scale.combined(with: .opacity))
             }
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 16).padding(.vertical, 6)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
     }
 
-    // ── Flying coin overlay (single burst per type) ─────────────────────
+    // ── Flying coin overlay (burst animation) ──────────────────────────────
 
     @State private var flyingCoins: [FlyingCoin] = []
 
@@ -553,64 +651,40 @@ struct GameView: View {
         }
     }
 
-    private var footerHint: String {
-        switch phase {
-        case .idle:
-            if currentLevelType.isMaze {
-                return "Navigate from green dot ● — avoid the walls!"
-            }
-            return currentLevelType.isCurve
-                ? "Trace the arc from the green dot ●"
-                : "Draw from the green dot ●"
-        case .drawing:
-            if currentLevelType.isMaze {
-                return settings.continuousDrawing
-                    ? "Stay clear of walls — pass through the orange dot ●"
-                    : "Stay clear of walls — release at the orange dot"
-            }
-            if settings.continuousDrawing {
-                return currentLevelType.isCurve
-                    ? "Follow the curve through the orange dot ●"
-                    : "Keep steady — pass through the orange dot ●"
-            }
-            return currentLevelType.isCurve
-                ? "Follow the curve — release at the orange dot"
-                : "Keep steady — release at the orange dot"
-        default: return ""
-        }
-    }
-
-    // ── Drag gesture ───────────────────────────────────────────────────────
+    // ── Drag gesture (draw + pan when zoomed) ─────────────────────────────
 
     private var drawGesture: some Gesture {
         DragGesture(minimumDistance: 1)
             .onChanged { value in
                 switch phase {
                 case .idle:
-                    guard let conn = currentConn else { return }
-                    if ScoringEngine.distance(value.location, config.dots[conn.0]) < dotR * 5 {
-                        phase = .drawing; activePath = [value.location]; redoStack = []
+                    guard let conn = currentConn else {
+                        if zoomScale > 1.05 { handlePanDrag(value) }
+                        return
+                    }
+                    let loc = transformToCanvas(value.location)
+                    if ScoringEngine.distance(loc, config.dots[conn.0]) < dotR * 5 {
+                        isPanDrag = false
+                        phase = .drawing; activePath = [loc]; redoStack = []
                         if gameStartTime == nil { gameStartTime = Date() }
                         if segmentStartTime == nil { segmentStartTime = Date() }
+                    } else if zoomScale > 1.05 {
+                        isPanDrag = true
+                        handlePanDrag(value)
                     }
 
                 case .drawing:
-                    activePath.append(value.location)
+                    if isPanDrag { return }
+                    let loc = transformToCanvas(value.location)
+                    activePath.append(loc)
 
-                    // ── Continuous drawing ─────────────────────────────
-                    // Score as soon as the finger reaches the end dot,
-                    // then seamlessly start drawing the next connection
-                    // without the user having to lift their finger.
                     if settings.continuousDrawing, let conn = currentConn {
                         let endDot   = config.dots[conn.1]
                         let startDot = config.dots[conn.0]
-                        let distEnd   = ScoringEngine.distance(value.location, endDot)
-                        let distStart = ScoringEngine.distance(value.location, startDot)
-                        // Finger must be ON the end dot (≤ 1.5 radii from center)
-                        // AND must have moved away from the start dot first.
+                        let distEnd   = ScoringEngine.distance(loc, endDot)
+                        let distStart = ScoringEngine.distance(loc, startDot)
                         if distEnd < dotR * 1.5 && distStart > dotR * 2.5 {
-                            completeCurrentStroke(continuous: true,
-                                                  fingerLocation: value.location)
+                            completeCurrentStroke(continuous: true, fingerLocation: loc)
                         }
                     }
 
@@ -618,41 +692,58 @@ struct GameView: View {
                 }
             }
             .onEnded { value in
+                if isPanDrag {
+                    isPanDrag = false
+                    panDragStart = nil
+                    return
+                }
                 guard phase == .drawing else { return }
 
                 if settings.continuousDrawing {
-                    // Continuous mode: if the finger lifts before reaching
-                    // the end dot, discard the incomplete stroke silently.
                     activePath = []; phase = .idle
                     return
                 }
 
-                // ── Classic (non-continuous) mode ─────────────────────
-                activePath.append(value.location)
-                completeCurrentStroke(continuous: false, fingerLocation: value.location)
+                let loc = transformToCanvas(value.location)
+                activePath.append(loc)
+                completeCurrentStroke(continuous: false, fingerLocation: loc)
             }
     }
 
+    // Inverse of scaleEffect(zoomScale, anchor: .center) + offset(panOffset)
+    private func transformToCanvas(_ point: CGPoint) -> CGPoint {
+        guard zoomScale > 1.001 || panOffset.width != 0 || panOffset.height != 0 else { return point }
+        let cx = canvasSize.width / 2
+        let cy = canvasSize.height / 2
+        return CGPoint(
+            x: (point.x - panOffset.width - cx) / zoomScale + cx,
+            y: (point.y - panOffset.height - cy) / zoomScale + cy
+        )
+    }
+
+    private func handlePanDrag(_ value: DragGesture.Value) {
+        if panDragStart == nil {
+            panDragStart = CGPoint(x: panOffset.width, y: panOffset.height)
+        }
+        let newX = (panDragStart?.x ?? 0) + value.translation.width
+        let newY = (panDragStart?.y ?? 0) + value.translation.height
+        let maxPan = (zoomScale - 1.0) * min(canvasSize.width, canvasSize.height) / 2
+        panOffset = CGSize(
+            width:  max(-maxPan, min(maxPan, newX)),
+            height: max(-maxPan, min(maxPan, newY))
+        )
+    }
+
     /// Score the current stroke, record it, advance to the next connection.
-    ///
-    /// - `continuous`: when `true`, uses a short flash (0.6 s), skips the
-    ///   ideal-line overlay, and chains into the next stroke if the next
-    ///   connection starts at the same dot the current one ends at.
-    /// - `fingerLocation`: where the finger is right now, used to seed the
-    ///   next stroke's `activePath` when chaining.
-    private func completeCurrentStroke(continuous: Bool,
-                                       fingerLocation: CGPoint) {
+    private func completeCurrentStroke(continuous: Bool, fingerLocation: CGPoint) {
         guard let conn = currentConn else { return }
         let startDot = config.dots[conn.0], endDot = config.dots[conn.1]
 
-        // Snap the stroke endpoints to the actual dot centers so the
-        // rendered line visually touches both dots.
         if !activePath.isEmpty {
             activePath[0] = startDot
             activePath.append(endDot)
         }
 
-        // ── Score ───────────────────────────────────────────────
         let accuracy: Int
         if let walls = config.walls, !walls.isEmpty {
             accuracy = ScoringEngine.scoreMaze(
@@ -668,10 +759,8 @@ struct GameView: View {
                 path: activePath, from: startDot, to: endDot, dotRadius: dotR)
         }
 
-        // Update elapsed time
         elapsedSeconds = gameStartTime.map { Date().timeIntervalSince($0) } ?? 0
 
-        // Apply time penalty
         let adjusted = ScoringEngine.applyTimePenalty(
             accuracyScore: accuracy, elapsed: elapsedSeconds, par: parTime)
 
@@ -681,13 +770,11 @@ struct GameView: View {
         finishedStrokes.append(FinishedStroke(path: activePath, score: adjusted))
         lastScoredConnIndex = connectionIndex
 
-        // Score flash (both modes)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { flashScore = adjusted }
 
         let nextIdx = connectionIndex + 1
 
         if continuous {
-            // ── Continuous: short flash, no ideal overlay ────────
             let captured = adjusted
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 if flashScore == captured {
@@ -703,18 +790,12 @@ struct GameView: View {
                 flashGuide()
                 let nextConn = config.connections[nextIdx]
                 if nextConn.0 == conn.1 {
-                    // Chained — next connection starts where this one ended.
-                    // Begin a new activePath immediately at the finger.
                     activePath = [fingerLocation]
-                    // phase stays .drawing
                 } else {
-                    // Not chained — user must lift and re-start from a
-                    // different dot.
                     activePath = []; phase = .idle
                 }
             }
         } else {
-            // ── Classic: ideal highlight + 1.5 s reviewing pause ─
             activePath = []; phase = .reviewing
 
             showIdeal = true
@@ -740,30 +821,18 @@ struct GameView: View {
 
     // ── Undo / Redo ────────────────────────────────────────────────────────
 
-    // ── Undo / Retry handlers ────────────────────────────────────────────
-
     private func handleUndoTap() {
         guard hasUndoableStrokes else { return }
         if isFreeUndo {
             performUndo()
         } else {
-            // Paid undo — show confirmation
-            if UserSession.shared.silverCoins >= 1 {
-                showPaidUndoAlert = true
-            } else {
-                showPaidUndoAlert = true   // still show — alert text shows coin count
-            }
+            showPaidUndoAlert = true
         }
     }
 
     private func handleRestartTap() {
-        // If no strokes drawn yet, restart is free
         if lineScores.isEmpty && redoStack.isEmpty { return }
-        if UserSession.shared.goldCoins >= 1 {
-            showRetryCostAlert = true
-        } else {
-            showRetryCostAlert = true   // still show — alert shows coin count
-        }
+        showRetryCostAlert = true
     }
 
     private func performUndo() {
@@ -782,7 +851,6 @@ struct GameView: View {
         guard canRedo else { return }
         let r = redoStack.removeLast()
         finishedStrokes.append(r.stroke)
-        // Rebuild a synthetic LineScore for redo
         lineScores.append(LineScore(connectionIndex: connectionIndex,
                                      rawAccuracyScore: r.score,
                                      timeAdjustedScore: r.score))
@@ -842,8 +910,6 @@ struct GameView: View {
         }
     }
 
-    /// Briefly flash the expected path as a solid bright line, then fade out
-    /// so only the dashed guide remains.
     private func flashGuide() {
         guideFlashOpacity = 0.9
         withAnimation(.easeOut(duration: 0.8).delay(0.5)) {
@@ -862,6 +928,10 @@ struct GameView: View {
         showCopperAnim = false; showSilverAnim = false; showGoldAnim = false
         copperAwarded = 0; silverAwarded = 0; goldAwarded = 0
         flyingCoins = []
+        // Reset zoom & pan for the new game
+        zoomScale = 1.0; panOffset = .zero; panDragStart = nil; isPanDrag = false
+        // Show objective overlay for the incoming game
+        showGameObjective = true; objectiveOpacity = 1.0
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { flashGuide() }
     }
 
@@ -876,14 +946,12 @@ struct GameView: View {
             totalTime: elapsedSeconds, undosUsed: totalUndosUsed, date: Date()))
         resultSaved = true
 
-        // Submit to CloudKit leaderboard (all players, including guests)
         CloudKitManager.shared.submitScore(
             playerID: UserSession.shared.playerID,
             displayName: UserSession.shared.displayName,
             level: currentLevel, game: currentGame,
             score: totalScore, totalTime: elapsedSeconds)
 
-        // Award coins with staggered animations
         awardCoinsAnimated(scores: scores)
     }
 
@@ -894,6 +962,9 @@ struct GameView: View {
         let g96 = scores.filter { $0 >= 96 && $0 <= 99 }.count
         let g100 = scores.filter { $0 == 100 }.count * 5
         goldAwarded = g96 + g100
+
+        // Cache so the footer shows this game's coins even after navigating away
+        gameCoinsCache["\(currentLevel)-\(currentGame)"] = (copper: copperAwarded, silver: silverAwarded, gold: goldAwarded)
 
         var delay: Double = 0.5
 
@@ -929,7 +1000,6 @@ struct GameView: View {
             delay += 1.4
         }
 
-        // Clear text animations after all done
         DispatchQueue.main.asyncAfter(deadline: .now() + delay + 2.0) {
             withAnimation(.easeOut(duration: 0.5)) {
                 showCopperAnim = false; showSilverAnim = false; showGoldAnim = false
@@ -950,7 +1020,6 @@ struct ArcPath: Shape {
         var p = Path()
         let startAngle = Angle(radians: Double(atan2(from.y - center.y, from.x - center.x)))
         var endAngle   = Angle(radians: Double(atan2(to.y   - center.y, to.x   - center.x)))
-        // Always take the shorter arc
         var delta = endAngle.radians - startAngle.radians
         while delta >  .pi { delta -= 2 * .pi }
         while delta < -.pi { delta += 2 * .pi }
@@ -1003,7 +1072,7 @@ enum CoinType {
 struct FlyingCoin: Identifiable {
     let id = UUID()
     let type: CoinType
-    let count: Int       // total coins awarded (shown as "+275")
+    let count: Int
     let delay: Double
 }
 
@@ -1022,7 +1091,6 @@ struct CoinBurstView: View {
 
     var body: some View {
         ZStack {
-            // Glow ring during burst
             if phase == 1 {
                 Circle()
                     .fill(coin.type.color.opacity(0.25))
@@ -1030,7 +1098,6 @@ struct CoinBurstView: View {
                     .blur(radius: 12)
             }
 
-            // Coin disc
             ZStack {
                 Circle()
                     .fill(
@@ -1049,7 +1116,6 @@ struct CoinBurstView: View {
             }
             .rotation3DEffect(.degrees(phase >= 1 ? 720 : 0), axis: (x: 0.2, y: 1, z: 0))
 
-            // "+count" label
             if phase == 1 {
                 Text("+\(coin.count)")
                     .font(.system(size: 20, weight: .black, design: .rounded))
@@ -1076,18 +1142,14 @@ struct CoinBurstView: View {
 enum CoinSoundPlayer {
     private static var lastPlayTime: TimeInterval = 0
 
-    /// Short bright "clink" when coin bursts from center.
     static func playClink() {
         let now = ProcessInfo.processInfo.systemUptime
         guard now - lastPlayTime > 0.08 else { return }
         lastPlayTime = now
-        // 1057 = short metallic tink
         AudioServicesPlaySystemSound(1057)
     }
 
-    /// Softer "thud" when coin lands in chest.
     static func playLand() {
-        // 1306 = subtle tap (key press)
         AudioServicesPlaySystemSound(1306)
     }
 }

@@ -39,6 +39,22 @@ struct WelcomeView: View {
                             .multilineTextAlignment(.center)
                     }
 
+                    // ── Game objective ────────────────────────────────────
+                    VStack(spacing: 8) {
+                        Text("How to Play")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.white.opacity(0.9))
+                        Text("A fun puzzle game for all ages to play! Objective is to join the given dots in the path shown and the accuracy is awarded with points for bragging rights in the Leaderboard and Coins. The coins can be used for transactions like Undos and Retries for a better chance to get more accuracy.")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 14))
+                    .padding(.horizontal, 24)
+
                     // ── Name field ────────────────────────────────────────
                     VStack(alignment: .leading, spacing: 8) {
                         Text("What should we call you?")
