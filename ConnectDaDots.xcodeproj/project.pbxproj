@@ -7,12 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		188F6C6B2FB15FA8003C2941 /* AppIcon_ConnectDaDots_Gem.png in Resources */ = {isa = PBXBuildFile; fileRef = 188F6C6A2FB15FA8003C2941 /* AppIcon_ConnectDaDots_Gem.png */; };
 		18A9E3EB2F8364E900D70FFF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 18A9E3EA2F8364E900D70FFF /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		188F6C6A2FB15FA8003C2941 /* AppIcon_ConnectDaDots_Gem.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon_ConnectDaDots_Gem.png; sourceTree = "<group>"; };
 		18A9E3AE2F83582F00D70FFF /* ConnectDaDots.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ConnectDaDots.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		18A9E3EA2F8364E900D70FFF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		18CD72D02FA22F51002FDCDF /* ConnectDaDots.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ConnectDaDots.entitlements; sourceTree = "<group>"; };
@@ -42,7 +40,6 @@
 			children = (
 				18CD72D02FA22F51002FDCDF /* ConnectDaDots.entitlements */,
 				18A9E3EA2F8364E900D70FFF /* Assets.xcassets */,
-				188F6C6A2FB15FA8003C2941 /* AppIcon_ConnectDaDots_Gem.png */,
 				18A9E3B02F83582F00D70FFF /* LineUp */,
 				18A9E3AF2F83582F00D70FFF /* Products */,
 			);
@@ -121,7 +118,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				18A9E3EB2F8364E900D70FFF /* Assets.xcassets in Resources */,
-				188F6C6B2FB15FA8003C2941 /* AppIcon_ConnectDaDots_Gem.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
