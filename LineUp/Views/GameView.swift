@@ -296,10 +296,9 @@ struct GameView: View {
                 // Emoji background — faint guide showing what shape to draw
                 if let emoji = config.shapeEmoji {
                     Text(emoji)
-                        .font(.system(size: min(canvasSize.width, canvasSize.height) * 0.52))
-                        .opacity(0.18)
-                        .frame(width: canvasSize.width, height: canvasSize.height)
-                        .position(x: canvasSize.width / 2, y: canvasSize.height / 2)
+                        .font(.system(size: min(geo.size.width, geo.size.height) * 0.52))
+                        .opacity(0.22)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         .allowsHitTesting(false)
                 }
 
