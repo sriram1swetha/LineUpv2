@@ -12,6 +12,9 @@ enum LevelType: Int, CaseIterable, Codable {
     case shapes            = 5   // Level 5: special line shapes (House, Cube…)
     case curveShapes       = 6   // Level 6: special curve shapes (Oval, Flower…)
     case maze              = 7   // Level 7: maze corridors with walls
+    case iconObjects       = 8   // Level 8: everyday objects (jar, fish, rocket…)
+    case natureFoods       = 9   // Level 9: nature & food (leaf, apple, sun…)
+    case symbolsFaces      = 10  // Level 10: symbols & faces (heart, star, smiley…)
 
     var title: String {
         switch self {
@@ -22,6 +25,9 @@ enum LevelType: Int, CaseIterable, Codable {
         case .shapes:         return "Shapes"
         case .curveShapes:    return "Curve Shapes"
         case .maze:           return "Maze"
+        case .iconObjects:    return "Everyday Objects"
+        case .natureFoods:    return "Nature & Food"
+        case .symbolsFaces:   return "Symbols & Faces"
         }
     }
 
@@ -34,6 +40,9 @@ enum LevelType: Int, CaseIterable, Codable {
         case .shapes:         return "Houses, cubes, arrows & more"
         case .curveShapes:    return "Ovals, flowers & creative curves"
         case .maze:           return "Navigate corridors — don't touch the walls"
+        case .iconObjects:    return "Jars, fish, rockets & everyday items"
+        case .natureFoods:    return "Leaves, apples, suns & natural forms"
+        case .symbolsFaces:   return "Hearts, stars, faces & symbols"
         }
     }
 
@@ -44,15 +53,20 @@ enum LevelType: Int, CaseIterable, Codable {
     var hasGuide: Bool { true }   // all levels now have guides
 
     var isThin: Bool {
-        self == .linesThin || self == .curvesThin
+        self == .linesThin || self == .curvesThin || self == .symbolsFaces
     }
 
     var isShapeLevel: Bool {
-        self == .shapes || self == .curveShapes
+        self == .shapes || self == .curveShapes || self == .iconObjects
+            || self == .natureFoods || self == .symbolsFaces
     }
 
     var isMaze: Bool {
         self == .maze
+    }
+
+    var isEmojiLevel: Bool {
+        self == .iconObjects || self == .natureFoods || self == .symbolsFaces
     }
 
     var showsDotNumbers: Bool { true }
@@ -66,10 +80,13 @@ enum LevelType: Int, CaseIterable, Codable {
         case .shapes:         return "4CAF50"  // green
         case .curveShapes:    return "00BCD4"  // teal
         case .maze:           return "795548"  // brown
+        case .iconObjects:    return "FF6F00"  // amber
+        case .natureFoods:    return "388E3C"  // forest green
+        case .symbolsFaces:   return "C62828"  // deep red
         }
     }
 
-    static let totalLevels = 7
+    static let totalLevels = 10
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────────

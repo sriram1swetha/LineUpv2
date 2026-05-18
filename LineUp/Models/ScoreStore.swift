@@ -107,6 +107,11 @@ class ScoreStore: ObservableObject {
         results.filter { $0.level == level && $0.game == game }.map { $0.totalScore }.max()
     }
 
+    func bestResult(level: Int, game: Int) -> GameResult? {
+        results.filter { $0.level == level && $0.game == game }
+               .max(by: { $0.totalScore < $1.totalScore })
+    }
+
     func levelBestTotal(level: Int, gamesPerLevel: Int) -> Int {
         (1...gamesPerLevel).compactMap { bestScore(level: level, game: $0) }.reduce(0, +)
     }

@@ -128,7 +128,7 @@ struct GameSelectionView: View {
             }
             .padding()
         }
-        .navigationTitle("Level \(level) · \(levelType.isCurve ? "Curves" : "Lines")")
+        .navigationTitle("Level \(level) · \(levelType.title)")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -139,24 +139,36 @@ struct GameCard: View {
     @EnvironmentObject var scoreStore: ScoreStore
 
     private var dotCount: Int { settings.dotCount(forGame: game, levelType: levelType) }
-    // Item 5: Use shape name only — no "Game N"
     private var shapeName: String { LevelGenerator.previewName(levelType: levelType, dotCount: dotCount, game: game) }
     private var best: Int?  { scoreStore.bestScore(level: level, game: game) }
     private var maxScore: Int { LevelGenerator.connectionCount(levelType: levelType, dotCount: dotCount, game: game) * 100 }
     private var badge: Color { Color(hex: levelType.badgeColor) }
+    private var difficulty: DifficultyRating {
+        DifficultyManager.calculate(levelType: levelType, game: game, settings: settings)
+    }
 
     var body: some View {
         VStack(spacing: 8) {
             if locked { Image(systemName: "lock.fill").font(.largeTitle).foregroundStyle(Color(.tertiaryLabel)) }
             else { Text(emoji).font(.largeTitle) }
 
-            // Shape name only — Item 5
             Text(locked ? "Locked" : shapeName)
                 .font(.caption.bold())
                 .foregroundStyle(locked ? Color(.tertiaryLabel) : .primary)
                 .multilineTextAlignment(.center)
 
             Text("\(dotCount) dots").font(.caption2).foregroundStyle(.secondary)
+
+            if !locked {
+                HStack(spacing: 3) {
+                    Image(systemName: difficulty.icon).font(.system(size: 8))
+                    Text(difficulty.badgeLabel).font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundStyle(difficulty.color)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(difficulty.color.opacity(0.12))
+                .clipShape(Capsule())
+            }
 
             Divider()
 
@@ -180,9 +192,15 @@ struct GameCard: View {
     }
 
     private var emoji: String {
-        if levelType == .shapes { return "🏠" }
-        if levelType == .curveShapes { return "🌸" }
-        if levelType.isMaze { return "🧩" }
+        switch levelType {
+        case .shapes:       return "🏠"
+        case .curveShapes:  return "🌸"
+        case .maze:         return "🧩"
+        case .iconObjects:  return "🏺"
+        case .natureFoods:  return "🌿"
+        case .symbolsFaces: return "❤️"
+        default: break
+        }
         if levelType.isCurve { return dotCount == 2 ? "〰️" : "⭕" }
         switch dotCount {
         case 2: return "➖"; case 3: return "🔺"; case 4: return "⬜"
