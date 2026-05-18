@@ -18,6 +18,7 @@ struct WallDef: Codable {
 
 struct ShapeTemplate: Codable {
     let name: String
+    let emoji: String?
     let unitDots: [[CGFloat]]
     let connections: [[Int]]?
     let arcs: [ArcDef]?
@@ -73,7 +74,8 @@ enum TemplateLoader {
         if let c = t.connections { conns = c.map { ($0[0], $0[1]) } }
         else { conns = (0..<dots.count).map { ($0, ($0 + 1) % dots.count) } }
         let walls = buildWalls(from: t, cx: cx, cy: cy, scale: scale)
-        return DotConfiguration(dots: dots, connections: conns, shapeName: t.name, walls: walls)
+        return DotConfiguration(dots: dots, connections: conns, shapeName: t.name,
+                                shapeEmoji: t.emoji, walls: walls)
     }
 
     static func buildCurveConfig(template t: ShapeTemplate,
@@ -92,6 +94,7 @@ enum TemplateLoader {
         }
         return DotConfiguration(dots: dots, connections: conns, shapeName: t.name,
                                 perConnectionArcs: perArcs,
+                                shapeEmoji: t.emoji,
                                 shapeDescription: t.description,
                                 connectionHints: t.connectionHints)
     }
@@ -105,6 +108,7 @@ enum TemplateLoader {
         else { conns = (0..<dots.count).map { ($0, ($0 + 1) % dots.count) } }
         let walls = buildWalls(from: t, cx: cx, cy: cy, scale: scale)
         return DotConfiguration(dots: dots, connections: conns, shapeName: t.name,
+                                shapeEmoji: t.emoji,
                                 shapeDescription: t.description, walls: walls)
     }
 

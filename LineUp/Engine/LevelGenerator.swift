@@ -32,6 +32,9 @@ struct DotConfiguration {
     /// Per-connection arc geometry. When present, parallel to `connections`.
     let perConnectionArcs: [(center: CGPoint, radius: CGFloat)?]?
 
+    /// Emoji character to show as a faint background guide (nil = no background).
+    let shapeEmoji: String?
+
     /// Optional one-line description of the overall shape.
     let shapeDescription: String?
 
@@ -50,6 +53,7 @@ struct DotConfiguration {
          circleCenter: CGPoint? = nil,
          circleRadius: CGFloat? = nil,
          perConnectionArcs: [(center: CGPoint, radius: CGFloat)?]? = nil,
+         shapeEmoji: String? = nil,
          shapeDescription: String? = nil,
          connectionHints: [String]? = nil,
          walls: [(CGPoint, CGPoint)]? = nil) {
@@ -59,6 +63,7 @@ struct DotConfiguration {
         self.circleCenter = circleCenter
         self.circleRadius = circleRadius
         self.perConnectionArcs = perConnectionArcs
+        self.shapeEmoji = shapeEmoji
         self.shapeDescription = shapeDescription
         self.connectionHints = connectionHints
         self.walls = walls
