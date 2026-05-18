@@ -58,6 +58,8 @@ struct GameView: View {
 
     // Per-game coins cache — persists when navigating away and back to the same game
     @State private var gameCoinsCache: [String: (copper: Int, silver: Int, gold: Int)] = [:]
+    // Tracks coins already granted this play-through to award only the improvement delta
+    @State private var coinsGranted: (copper: Int, silver: Int, gold: Int) = (0, 0, 0)
 
     // Game objective overlay — shown briefly when a new game loads
     @State private var showGameObjective = true
@@ -527,27 +529,46 @@ struct GameView: View {
     // Fixed height. Coin animation banner floats ABOVE this strip as an overlay.
 
     private var footerBar: some View {
-        HStack(spacing: 0) {
-            footerCell(label: "Score", value: "\(totalScore)/\(maxScore)")
+        let prev = lineScores.isEmpty ? scoreStore.bestResult(level: currentLevel, game: currentGame) : nil
+        let showingPrev = prev != nil
 
-            Divider().frame(height: 30)
-
+        return HStack(spacing: 0) {
             VStack(spacing: 2) {
-                Text("Accuracy").font(.system(size: 9)).foregroundStyle(.secondary)
-                Text(maxScore > 0 ? "\(totalScore * 100 / maxScore)%" : "—")
+                Text(showingPrev ? "Best" : "Score").font(.system(size: 9)).foregroundStyle(showingPrev ? Color.blue.opacity(0.7) : .secondary)
+                Text(showingPrev ? "\(prev!.totalScore)/\(prev!.maxPossibleScore)" : "\(totalScore)/\(maxScore)")
                     .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .foregroundStyle(scoreColor(maxScore > 0 ? totalScore * 100 / maxScore : 0))
+                    .foregroundStyle(showingPrev ? Color.blue.opacity(0.8) : .primary)
             }
             .frame(maxWidth: .infinity)
 
             Divider().frame(height: 30)
 
-            footerCell(label: "Time",
-                       value: elapsedSeconds > 0 ? String(format: "%.1fs", elapsedSeconds) : "—")
+            VStack(spacing: 2) {
+                Text("Accuracy").font(.system(size: 9)).foregroundStyle(.secondary)
+                let pct: Int = {
+                    if showingPrev {
+                        let p = prev!; return p.maxPossibleScore > 0 ? p.totalScore * 100 / p.maxPossibleScore : 0
+                    }
+                    return maxScore > 0 ? totalScore * 100 / maxScore : 0
+                }()
+                Text(showingPrev || maxScore > 0 ? "\(pct)%" : "—")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(showingPrev ? Color.blue.opacity(0.8) : scoreColor(pct))
+            }
+            .frame(maxWidth: .infinity)
 
             Divider().frame(height: 30)
 
-            // Coins earned for the current game — persists when navigating away and back
+            VStack(spacing: 2) {
+                Text("Time").font(.system(size: 9)).foregroundStyle(.secondary)
+                Text(showingPrev ? prev!.timeLabel : (elapsedSeconds > 0 ? String(format: "%.1fs", elapsedSeconds) : "—"))
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(showingPrev ? Color.blue.opacity(0.8) : .primary)
+            }
+            .frame(maxWidth: .infinity)
+
+            Divider().frame(height: 30)
+
             VStack(spacing: 2) {
                 Text("Earned").font(.system(size: 9)).foregroundStyle(.secondary)
                 coinsEarnedRow
@@ -927,6 +948,7 @@ struct GameView: View {
         guideFlashOpacity = 0
         showCopperAnim = false; showSilverAnim = false; showGoldAnim = false
         copperAwarded = 0; silverAwarded = 0; goldAwarded = 0
+        coinsGranted = (0, 0, 0)
         flyingCoins = []
         // Reset zoom & pan for the new game
         zoomScale = 1.0; panOffset = .zero; panDragStart = nil; isPanDrag = false
@@ -957,46 +979,55 @@ struct GameView: View {
 
     private func awardCoinsAnimated(scores: [Int]) {
         let total = scores.reduce(0, +)
-        copperAwarded = total / 10
-        silverAwarded = scores.filter { $0 >= 90 && $0 <= 95 }.count
+        let newCopper = total / 10
+        let newSilver = scores.filter { $0 >= 90 && $0 <= 95 }.count
         let g96 = scores.filter { $0 >= 96 && $0 <= 99 }.count
         let g100 = scores.filter { $0 == 100 }.count * 5
-        goldAwarded = g96 + g100
+        let newGold = g96 + g100
 
-        // Cache so the footer shows this game's coins even after navigating away
-        gameCoinsCache["\(currentLevel)-\(currentGame)"] = (copper: copperAwarded, silver: silverAwarded, gold: goldAwarded)
+        // Only award the improvement over what's already been granted this playthrough
+        let deltaCopper = max(0, newCopper - coinsGranted.copper)
+        let deltaSilver = max(0, newSilver - coinsGranted.silver)
+        let deltaGold   = max(0, newGold   - coinsGranted.gold)
+
+        coinsGranted = (copper: newCopper, silver: newSilver, gold: newGold)
+
+        copperAwarded = deltaCopper
+        silverAwarded = deltaSilver
+        goldAwarded   = deltaGold
+
+        // Update footer cache to the full totals for this game
+        gameCoinsCache["\(currentLevel)-\(currentGame)"] = (copper: newCopper, silver: newSilver, gold: newGold)
 
         var delay: Double = 0.5
 
-        if copperAwarded > 0 {
+        if deltaCopper > 0 {
             let d = delay
             DispatchQueue.main.asyncAfter(deadline: .now() + d) {
                 withAnimation(.spring(response: 0.4)) { showCopperAnim = true }
-                UserSession.shared.copperCoins += copperAwarded
+                UserSession.shared.copperCoins += deltaCopper
             }
-            spawnCoinBurst(type: .copper, count: copperAwarded, delay: delay)
+            spawnCoinBurst(type: .copper, count: deltaCopper, delay: delay)
             delay += 1.4
         }
 
-        if silverAwarded > 0 {
+        if deltaSilver > 0 {
             let d = delay
             DispatchQueue.main.asyncAfter(deadline: .now() + d) {
                 withAnimation(.spring(response: 0.4)) { showSilverAnim = true }
-                UserSession.shared.silverCoins += silverAwarded
+                UserSession.shared.silverCoins += deltaSilver
             }
-            spawnCoinBurst(type: .silver, count: silverAwarded, delay: delay)
+            spawnCoinBurst(type: .silver, count: deltaSilver, delay: delay)
             delay += 1.4
         }
 
-        if goldAwarded > 0 {
+        if deltaGold > 0 {
             let d = delay
             DispatchQueue.main.asyncAfter(deadline: .now() + d) {
                 withAnimation(.spring(response: 0.4)) { showGoldAnim = true }
-                let g96only = scores.filter { $0 >= 96 && $0 <= 99 }.count
-                let perfect = scores.filter { $0 == 100 }.count * 5
-                UserSession.shared.goldCoins += g96only + perfect
+                UserSession.shared.goldCoins += deltaGold
             }
-            spawnCoinBurst(type: .gold, count: goldAwarded, delay: delay)
+            spawnCoinBurst(type: .gold, count: deltaGold, delay: delay)
             delay += 1.4
         }
 

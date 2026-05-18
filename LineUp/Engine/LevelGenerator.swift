@@ -138,6 +138,9 @@ enum LevelGenerator {
         if levelType.isMaze {
             return TemplateLoader.mazeName(index: game - 1)
         }
+        if levelType == .iconObjects   { return TemplateLoader.iconShapeName(index: game - 1) }
+        if levelType == .natureFoods   { return TemplateLoader.natureFoodShapeName(index: game - 1) }
+        if levelType == .symbolsFaces  { return TemplateLoader.symbolShapeName(index: game - 1) }
         // Regular levels: games 1–6 use polygon/circle names,
         // games 7+ use asymmetric/partial-arc template names.
         if game <= 6 {
@@ -165,6 +168,9 @@ enum LevelGenerator {
         if levelType.isMaze {
             return TemplateLoader.mazeConnectionCount(index: game - 1)
         }
+        if levelType == .iconObjects   { return TemplateLoader.iconShapeConnectionCount(index: game - 1) }
+        if levelType == .natureFoods   { return TemplateLoader.natureFoodConnectionCount(index: game - 1) }
+        if levelType == .symbolsFaces  { return TemplateLoader.symbolConnectionCount(index: game - 1) }
         // Regular polygon/circle levels: games 1–6.
         if game <= 6 {
             return dotCount == 2 ? 1 : dotCount
@@ -192,7 +198,7 @@ enum LevelGenerator {
         let cy = usableTop + usableHeight / 2
         let radius = min(size.width, usableHeight) / 2 - padding
 
-        // ── JSON-driven levels: shapes, curve shapes, mazes ─────
+        // ── JSON-driven levels: shapes, curve shapes, mazes, emoji levels ─────
         if levelType == .shapes,
            let cfg = TemplateLoader.lineShape(index: game - 1, cx: cx, cy: cy, radius: radius) {
             return cfg
@@ -203,6 +209,18 @@ enum LevelGenerator {
         }
         if levelType.isMaze,
            let cfg = TemplateLoader.maze(index: game - 1, cx: cx, cy: cy, radius: radius) {
+            return cfg
+        }
+        if levelType == .iconObjects,
+           let cfg = TemplateLoader.iconShape(index: game - 1, cx: cx, cy: cy, radius: radius) {
+            return cfg
+        }
+        if levelType == .natureFoods,
+           let cfg = TemplateLoader.natureFoodShape(index: game - 1, cx: cx, cy: cy, radius: radius) {
+            return cfg
+        }
+        if levelType == .symbolsFaces,
+           let cfg = TemplateLoader.symbolShape(index: game - 1, cx: cx, cy: cy, radius: radius) {
             return cfg
         }
 

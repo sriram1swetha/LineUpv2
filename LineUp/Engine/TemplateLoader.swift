@@ -30,6 +30,9 @@ struct ShapeCatalog: Codable {
     let lineTemplates: [ShapeTemplate]
     let curveTemplates: [ShapeTemplate]
     let mazeTemplates: [ShapeTemplate]
+    let iconLineTemplates: [ShapeTemplate]?
+    let natureFoodTemplates: [ShapeTemplate]?
+    let symbolTemplates: [ShapeTemplate]?
 }
 
 // MARK: - Loader
@@ -44,7 +47,8 @@ enum TemplateLoader {
               let data = try? Data(contentsOf: url),
               let c = try? JSONDecoder().decode(ShapeCatalog.self, from: data) else {
             print("TemplateLoader: shapes.json not found or invalid.")
-            let empty = ShapeCatalog(lineTemplates: [], curveTemplates: [], mazeTemplates: [])
+            let empty = ShapeCatalog(lineTemplates: [], curveTemplates: [], mazeTemplates: [],
+                                     iconLineTemplates: nil, natureFoodTemplates: nil, symbolTemplates: nil)
             _catalog = empty
             return empty
         }
@@ -52,9 +56,12 @@ enum TemplateLoader {
         return c
     }
 
-    static var lineTemplates: [ShapeTemplate]  { catalog.lineTemplates }
-    static var curveTemplates: [ShapeTemplate]  { catalog.curveTemplates }
-    static var mazeTemplates: [ShapeTemplate]   { catalog.mazeTemplates }
+    static var lineTemplates: [ShapeTemplate]       { catalog.lineTemplates }
+    static var curveTemplates: [ShapeTemplate]      { catalog.curveTemplates }
+    static var mazeTemplates: [ShapeTemplate]       { catalog.mazeTemplates }
+    static var iconLineTemplates: [ShapeTemplate]   { catalog.iconLineTemplates ?? [] }
+    static var natureFoodTemplates: [ShapeTemplate] { catalog.natureFoodTemplates ?? [] }
+    static var symbolTemplates: [ShapeTemplate]     { catalog.symbolTemplates ?? [] }
 
     // MARK: - Config builders
 
@@ -179,5 +186,62 @@ enum TemplateLoader {
         let ts = mazeTemplates
         guard !ts.isEmpty else { return 1 }
         return connectionCount(template: ts[((index % ts.count) + ts.count) % ts.count])
+    }
+
+    // MARK: - Icon / Nature / Symbol level helpers
+
+    private static func safeIndex(_ index: Int, in ts: [ShapeTemplate]) -> Int {
+        ((index % ts.count) + ts.count) % ts.count
+    }
+
+    static func iconShape(index: Int, cx: CGFloat, cy: CGFloat,
+                          radius: CGFloat) -> DotConfiguration? {
+        let ts = iconLineTemplates
+        guard !ts.isEmpty else { return nil }
+        return buildLineConfig(template: ts[safeIndex(index, in: ts)], cx: cx, cy: cy, scale: radius)
+    }
+
+    static func natureFoodShape(index: Int, cx: CGFloat, cy: CGFloat,
+                                radius: CGFloat) -> DotConfiguration? {
+        let ts = natureFoodTemplates
+        guard !ts.isEmpty else { return nil }
+        return buildLineConfig(template: ts[safeIndex(index, in: ts)], cx: cx, cy: cy, scale: radius)
+    }
+
+    static func symbolShape(index: Int, cx: CGFloat, cy: CGFloat,
+                            radius: CGFloat) -> DotConfiguration? {
+        let ts = symbolTemplates
+        guard !ts.isEmpty else { return nil }
+        return buildLineConfig(template: ts[safeIndex(index, in: ts)], cx: cx, cy: cy, scale: radius)
+    }
+
+    static func iconShapeName(index: Int) -> String {
+        let ts = iconLineTemplates; guard !ts.isEmpty else { return "Object" }
+        return ts[safeIndex(index, in: ts)].name
+    }
+
+    static func natureFoodShapeName(index: Int) -> String {
+        let ts = natureFoodTemplates; guard !ts.isEmpty else { return "Nature" }
+        return ts[safeIndex(index, in: ts)].name
+    }
+
+    static func symbolShapeName(index: Int) -> String {
+        let ts = symbolTemplates; guard !ts.isEmpty else { return "Symbol" }
+        return ts[safeIndex(index, in: ts)].name
+    }
+
+    static func iconShapeConnectionCount(index: Int) -> Int {
+        let ts = iconLineTemplates; guard !ts.isEmpty else { return 1 }
+        return connectionCount(template: ts[safeIndex(index, in: ts)])
+    }
+
+    static func natureFoodConnectionCount(index: Int) -> Int {
+        let ts = natureFoodTemplates; guard !ts.isEmpty else { return 1 }
+        return connectionCount(template: ts[safeIndex(index, in: ts)])
+    }
+
+    static func symbolConnectionCount(index: Int) -> Int {
+        let ts = symbolTemplates; guard !ts.isEmpty else { return 1 }
+        return connectionCount(template: ts[safeIndex(index, in: ts)])
     }
 }
