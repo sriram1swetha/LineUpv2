@@ -293,6 +293,16 @@ struct GameView: View {
             ZStack(alignment: .top) {
                 Color(.systemBackground)
 
+                // Emoji background — faint guide showing what shape to draw
+                if let emoji = config.shapeEmoji {
+                    Text(emoji)
+                        .font(.system(size: min(canvasSize.width, canvasSize.height) * 0.52))
+                        .opacity(0.18)
+                        .frame(width: canvasSize.width, height: canvasSize.height)
+                        .position(x: canvasSize.width / 2, y: canvasSize.height / 2)
+                        .allowsHitTesting(false)
+                }
+
                 // Dashed guide (current connection)
                 if let conn = currentConn, phase != .complete {
                     idealHighlight(connectionIndex: connectionIndex)
